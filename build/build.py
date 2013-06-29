@@ -7,8 +7,13 @@ import os
 
 i = codecs.open('template.py', 'r', 'utf_8')
 js = codecs.open('main.js', 'r', 'shift_jis')
-ods = open('dummy.ods', 'r')
-template = i.read().replace("%%%GENERATE_FEATURE_JS%%%", js.read()).replace("%%%GENERATE_FEATURE_DUMMY_ODS%%%", base64.b64encode(ods.read()))
+ods = open('dummy.ods', 'rb')
+odsBase64 = base64.b64encode(ods.read())
+width = 76
+odsBase64 = '\n'.join(odsBase64[pos:pos+width] for pos in xrange(0, len(odsBase64), width))
+template = i.read()
+template = template.replace("%%%GENERATE_FEATURE_JS%%%", js.read())
+template = template.replace("%%%GENERATE_FEATURE_DUMMY_ODS%%%", odsBase64)
 template = template.replace("\r\n", "\n")
 i.close()
 
