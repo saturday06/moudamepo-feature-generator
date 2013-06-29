@@ -64,7 +64,7 @@ officePath = "soffice"
 process = Popen([officePath, acceptArg
                  , "--nologo"
                  , "--norestore"
-                 #, "--invisible"
+                 , "--invisible"
                  #, "--minimized"
                  #, "--headless"                 
 ])
