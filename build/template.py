@@ -13,8 +13,8 @@ generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
 """
 #" /* magic comment for editor's syntax highlighting
 
-odsBase64 = """
-%%%GENERATE_FEATURE_DUMMY_ODS%%%
+odBase64 = """
+%%%GENERATE_FEATURE_DUMMY_OD%%%
 """
 
 import uno
@@ -35,18 +35,18 @@ from com.sun.star.connection import NoConnectException
 from com.sun.star.util import Date
 from com.sun.star.beans import PropertyValue
 
-odsFile = tempfile.NamedTemporaryFile()
-odsFile.write(base64.b64decode(odsBase64))
-#print(odsFile.name)
-odsFile.flush()
+odFile = tempfile.NamedTemporaryFile()
+odFile.write(base64.b64decode(odBase64))
+#print(odFile.name)
+odFile.flush()
 
-scriptOdsFile = tempfile.NamedTemporaryFile()
-#print(scriptOdsFile.name)
-scriptOdsFile.flush()
+scriptOdFile = tempfile.NamedTemporaryFile()
+#print(scriptOdFile.name)
+scriptOdFile.flush()
 
 generateFeatureJsPath = "Scripts/javascript/Library/GenerateFeature.js"
-zin = zipfile.ZipFile (odsFile.name, 'r')
-zout = zipfile.ZipFile (scriptOdsFile.name, 'w')
+zin = zipfile.ZipFile (odFile.name, 'r')
+zout = zipfile.ZipFile (scriptOdFile.name, 'w')
 for item in zin.infolist():
     buffer = zin.read(item.filename)
     #print(item.filename)
@@ -91,8 +91,8 @@ readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
 print("GenerateFeature")
-print("script: " + scriptOdsFile.name)
-url = "file://" + scriptOdsFile.name
+print("script: " + scriptOdFile.name)
+url = "file://" + scriptOdFile.name
 #print(url)
 document = desktop.loadComponentFromURL(url, "_blank", 0, (macroExecutionModeArg, readOnlyArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
