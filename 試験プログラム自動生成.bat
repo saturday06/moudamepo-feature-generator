@@ -21,12 +21,13 @@
  *
  */
 
-var WINDOWS = (typeof(WScript) != 'undefined');
-var STAR = (typeof(XSCRIPTCONTEXT) != 'undefined');
+var WINDOWS = (typeof WScript != 'undefined');
+var STAR = (typeof XSCRIPTCONTEXT != 'undefined');
 
 if (STAR) {
+    var JFile = Packages.java.io.File;
+    var FILE_SEPARATOR = JFile.separator;
     importClass(Packages.java.lang.System);
-    importClass(Packages.java.io.File);
     importClass(Packages.java.io.PrintStream);
     importClass(Packages.com.sun.star.beans.PropertyValue);
     importClass(Packages.com.sun.star.container.XIndexAccess);
@@ -61,9 +62,7 @@ if (STAR) {
         return object;
     }
 
-    var File = {
-        separator: "\\"
-    };
+    var FILE_SEPARATOR = "\\";
 }
 
 function getStarPath(nativePath) {
@@ -198,7 +197,7 @@ function StarFilesystem() {
     this.write = function (path, content) {
         var printStream;
         try {
-            printStream = new PrintStream(new File(path), "UTF-8");
+            printStream = new PrintStream(new JFile(path), "UTF-8");
             printStream.write(0xef);
             printStream.write(0xbb);
             printStream.write(0xbf);
@@ -242,7 +241,7 @@ function StarFilesystem() {
      */
     this.getSpreadsheetFiles = function (baseFolderPath) {
         var spreadsheetFiles = [];
-        var files = new File(baseFolderPath).listFiles() || [];
+        var files = new JFile(baseFolderPath).listFiles() || [];
         for (var i = 0; i < files.length; ++i) {
             var path = files[i].getAbsolutePath();
             if (files[i].isDirectory()) {
@@ -258,11 +257,11 @@ function StarFilesystem() {
     };
 
     this.createFolder = function (path) {
-        (new File(path)).mkdirs();
+        (new JFile(path)).mkdirs();
     };
 
     this.getBaseName = function (path) {
-        return ((new File(path)).getName() + "").replace(/\..*$/i, "");
+        return ((new JFile(path)).getName() + "").replace(/\..*$/i, "");
     };
 }
 
@@ -312,6 +311,7 @@ function StarBook(path) {
         hidden
     ];
 
+    var book = this;
     var url = getStarPath(path);
     var starBook = qi(XSpreadsheetDocument, qi(XComponentLoader, desktop).loadComponentFromURL(url, "_blank", 0, properties));
 
@@ -349,6 +349,10 @@ function StarBook(path) {
             return qi(XViewFreezable, currentController).hasFrozenPanes() ?
                 qi(XViewSplitable, currentController).getSplitColumn() : 0;
         };
+
+        this.getBook = function() {
+            return book;
+        };
     }
 
     this.dispose = function() {
@@ -362,6 +366,10 @@ function StarBook(path) {
             results.push(new Sheet(qi(XSpreadsheet, sheets.getByIndex(i))));
         }
         return results;
+    };
+
+    this.getBaseName = function() {
+        return filesystem.getBaseName(path);
     };
 };
 
@@ -490,7 +498,7 @@ function NormalizeStep(step) {
 function CreateScenarioFromWorkSheetColumn(sheet, topRow, bottomRow, commandColumn, conditionColumn, getStepFunctions) {
     var excelColumnName = GetExcelColumnName(conditionColumn);
     var range = excelColumnName + topRow + ":" + excelColumnName + bottomRow;
-    var scenario = "シナリオ: " + sheet.getBook().getBaseName() + "_" + sheet.getName() + "_"  + ("00" + (conditionColumn - commandColumn)).slice(-3) + "_" + range + "\n";
+    var scenario = "シナリオ: " + sheet.getBook().getBaseName() + "_" + sheet.getName() + "_"  + ("0000" + (conditionColumn - commandColumn)).slice(-5) + "_" + range + "\n";
     for (var row = topRow; row <= bottomRow; ++row) {
         var condition = sheet.getCell(row, conditionColumn).getValue();
         var command = sheet.getCell(row, commandColumn).getValue();
@@ -507,13 +515,9 @@ function CreateScenarioFromWorkSheetColumn(sheet, topRow, bottomRow, commandColu
  * ワークシートからCucumberのfeatureデータを出力する
  */
 function CreateFeatureFromWorkSheet(sheet, featureName) {
-    console.log(10);
     console.log(sheet.getName());
-    console.log("1x");
     sheet.activate();
-    console.log(11);
     sheet.getCell(1, 1).activate();
-    console.log(12);
 
     // Freezeされているセルをデシジョンテーブルの左上とする
     var top = sheet.getTableTop();
@@ -521,7 +525,6 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
     if (top < 2 || left < 2) {
         return;
     }
-    console.log(13);
 
     // 右限を検索
     var right = 0;
@@ -529,13 +532,10 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
     for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
         var valueFound = false;
         for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
-            console.log(20);
             if (sheet.getCell(y, x).getValue().length > 0) {
-                console.log(22);
                 valueFound = true;
                 break;
             }
-            console.log(21);
         }
         if (valueFound) {
             ignoredXLines = 0;
@@ -547,7 +547,6 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
     if (!right) {
         return;
     }
-    console.log(14);
 
     // 下限を検索
     var bottom = 0;
@@ -571,7 +570,6 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
         return;
     }
     console.log("デシジョンテーブルの範囲: (top=" + top + ", left=" + left + ") - (bottom=" + bottom + ", right=" + right + ")");
-    console.log(15);
 
     var getStepFunctions = new Array(bottom + 1);
     for (var y = top; y <= bottom; ++y) {
@@ -589,7 +587,6 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
     for (var x = left; x <= right; ++x) {
         feature += CreateScenarioFromWorkSheetColumn(sheet, top, bottom, left - 1, x, getStepFunctions);
     }
-    console.log(16);
     console.log("OK");
     return feature;
 }
@@ -614,29 +611,21 @@ function CreateFeature(path, outputFolder) {
     } catch (e) {
         // TODO
         // return;
+        throw e;
     }
 
     try {
-        console.log(1);
         var sheets = book.getSheets();
         for (var i = 0; i < sheets.length; ++i) {
             var sheet = sheets[i];
-            console.log(2);
             var featureName = book.getBaseName() + " " + sheet.getName();
-            console.log(3);
             var feature = CreateFeatureFromWorkSheet(sheet, featureName);
-            console.log(4);
             if (!feature) {
                 console.log("  skip")
                 continue;
             }
-            console.log(5);
-            var outputPath = outputFolder + File.separator + filesystem.getBaseName(path) + "_" + sheet.getName() + ".feature";
-            console.log(6);
-            console.log(outputPath);
-            console.log(7);
+            var outputPath = outputFolder + FILE_SEPARATOR + filesystem.getBaseName(path) + "_" + sheet.getName() + ".feature";
             filesystem.write(outputPath, feature);
-            console.log(8);
         }
     } finally {
         try {
@@ -663,19 +652,57 @@ function GetExcelColumnName(Index) {
     return result;
 }
 
-var inputFolder = filesystem.getInputFolder();
-var outputFolder = filesystem.getOutputFolder();
-
-console.log(inputFolder + "から試験仕様書を検索しています");
-var message = "\n";
-var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
-for (var i = 0; i < filePaths.length; ++i) {
-    message += filePaths[i] + "\n";
+/**
+ * http://stackoverflow.com/a/20260831
+ */
+function objToString(obj, level)
+{
+    if (level > 10) {
+        return "!!! level too deep"
+    }
+    var out = '';
+    for (var i in obj) {
+        for (loop = level; loop > 0; loop--) {
+            out += "  ";
+        }
+        if (obj[i] instanceof Object) {
+            out += i + " (Object):\n";
+            out += objToString(obj[i], level + 1);
+        } else {
+            out += i + ": " + obj[i] + "\n";
+        }
+    }
+    return out;
 }
-message += filePaths.length + "件見つかりました"
-console.log(message);
 
-for (var i = 0; i < filePaths.length; ++i) {
-    CreateFeature(filePaths[i], outputFolder);
+try {
+    var inputFolder = filesystem.getInputFolder();
+    var outputFolder = filesystem.getOutputFolder();
+
+    console.log(inputFolder + "から試験仕様書を検索しています");
+    var message = "\n";
+    var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
+    for (var i = 0; i < filePaths.length; ++i) {
+        message += filePaths[i] + "\n";
+    }
+    message += filePaths.length + "件見つかりました"
+    console.log(message);
+
+    for (var i = 0; i < filePaths.length; ++i) {
+        CreateFeature(filePaths[i], outputFolder);
+    }
+} catch (e) {
+    console.log(e);
+    console.log(objToString(e, 1));
+    if (typeof e.rhinoException != 'undefined') {
+        e.rhinoException.printStackTrace();
+    } else if (typeof e.javaException != 'undefined') {
+        e.javaException.printStackTrace();
+    }
+
+    if (typeof e.stack != 'undefined') {
+        console.log(e.stack);
+    }
+
+    throw e;
 }
-
