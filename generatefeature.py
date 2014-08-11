@@ -941,11 +941,11 @@ acceptArg = "--accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
 officePath = "soffice"
 process = Popen([officePath, acceptArg
-                 , "--nologo"
-                 , "--norestore"
-                 , "--invisible"
-                 #, "--minimized"
-                 #, "--headless"                 
+                 #, "-nologo"
+                 , "-norestore"
+                 , "-invisible"
+                 #, "-minimized"
+                 #, "-headless"
 ])
 
 ctx = None
