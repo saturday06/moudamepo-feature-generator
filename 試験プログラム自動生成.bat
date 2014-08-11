@@ -61,8 +61,8 @@ if (STAR) {
         return object;
     }
 
-    function File() {
-        this.separator = "\\";
+    var File = {
+        separator: "\\"
     };
 }
 
@@ -161,14 +161,6 @@ function WindowsFilesystem() {
                 console.write("*");
                 filePaths.push(path);
             }
-            if (progress > 10) {
-                console.write(".");
-                progress = 0;
-            }
-        }
-        var folders = new Enumerator(baseFolder.SubFolders);
-        for (; !folders.atEnd(); folders.moveNext(), ++progress) {
-            filePaths = filePaths.concat(GetExcelFiles(folders.item()));
             if (progress > 10) {
                 console.write(".");
                 progress = 0;
@@ -379,14 +371,21 @@ function StarBook(path) {
 function ExcelBook(path) {
     var excelApplication;
     var excelBook;
+    var book = this;
     
     function Sheet(excelSheet) {
+        var sheet = this;
+
         function Cell(excelCell) {
             this.getValue = function () {
                 return (excelCell.Value || "") + "";
             };
 
             this.activate = function() {
+            };
+
+            this.getSheet = function() {
+                return sheet;
             };
         };
         
@@ -409,6 +408,10 @@ function ExcelBook(path) {
         this.getTableLeft = function () {
             return excelApplication.ActiveWindow.SplitColumn + 1;
         };
+
+        this.getBook = function() {
+            return book;
+        };
     }
 
     this.dispose = function() {
@@ -423,6 +426,10 @@ function ExcelBook(path) {
             sheets.push(new Sheet(enumerator.item()));
         }
         return sheets;
+    };
+
+    this.getBaseName = function() {
+        return filesystem.getBaseName(path);
     };
 
     try {
@@ -483,7 +490,7 @@ function NormalizeStep(step) {
 function CreateScenarioFromWorkSheetColumn(sheet, topRow, bottomRow, commandColumn, conditionColumn, getStepFunctions) {
     var excelColumnName = GetExcelColumnName(conditionColumn);
     var range = excelColumnName + topRow + ":" + excelColumnName + bottomRow;
-    var scenario = "シナリオ: No." + (conditionColumn - commandColumn) + " " + range + "\n";
+    var scenario = "シナリオ: " + sheet.getBook().getBaseName() + "_" + sheet.getName() + "_"  + ("00" + (conditionColumn - commandColumn)).slice(-3) + "_" + range + "\n";
     for (var row = topRow; row <= bottomRow; ++row) {
         var condition = sheet.getCell(row, conditionColumn).getValue();
         var command = sheet.getCell(row, commandColumn).getValue();
@@ -578,9 +585,7 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
         }
         getStepFunctions[y] = textFound ? GetStepFromTextCell : GetStepFromBooleanCell;
     }
-    var feature = "";
-    feature += "# language: ja\n\n"; // 手元のSpecFlowで言語指定の引数が使えないため
-    feature += "フィーチャ: " + featureName + "\n\n";
+    var feature = "フィーチャ: " + featureName + "\n\n";
     for (var x = left; x <= right; ++x) {
         feature += CreateScenarioFromWorkSheetColumn(sheet, top, bottom, left - 1, x, getStepFunctions);
     }
@@ -617,7 +622,7 @@ function CreateFeature(path, outputFolder) {
         for (var i = 0; i < sheets.length; ++i) {
             var sheet = sheets[i];
             console.log(2);
-            var featureName = filesystem.getBaseName(path) + " " + sheet.getName();
+            var featureName = book.getBaseName() + " " + sheet.getName();
             console.log(3);
             var feature = CreateFeatureFromWorkSheet(sheet, featureName);
             console.log(4);
