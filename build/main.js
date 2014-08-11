@@ -149,14 +149,6 @@ function WindowsFilesystem() {
                 progress = 0;
             }
         }
-        var folders = new Enumerator(baseFolder.SubFolders);
-        for (; !folders.atEnd(); folders.moveNext(), ++progress) {
-            filePaths = filePaths.concat(GetExcelFiles(folders.item()));
-            if (progress > 10) {
-                console.write(".");
-                progress = 0;
-            }
-        }
         return filePaths;
     };
 
