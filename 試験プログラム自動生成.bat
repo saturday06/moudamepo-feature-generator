@@ -165,6 +165,14 @@ function WindowsFilesystem() {
                 progress = 0;
             }
         }
+        var folders = new Enumerator(baseFolder.SubFolders);
+        for (; !folders.atEnd(); folders.moveNext(), ++progress) {
+            filePaths = filePaths.concat(this.getSpreadsheetFiles(folders.item()));
+            if (progress > 10) {
+                console.write(".");
+                progress = 0;
+            }
+        }
         return filePaths;
     };
 
@@ -216,13 +224,16 @@ function StarFilesystem() {
         if (ARGUMENTS[1]) {
             return "" + ARGUMENTS[1];
         }
-        // return "/home/i_mogi"
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
+        var message = "入力フォルダ取得";
+        folderPicker.setTitle(message);
+        folderPicker.setDescription(message);
         if (folderPicker.execute() == ExecutableDialogResults.OK) {
             return getNativePath(folderPicker.getDirectory());
         } else {
-            foo.bar();
+            console.log("キャンセルされました。");
+            application.exit();
         }
     };
 
@@ -233,7 +244,17 @@ function StarFilesystem() {
         if (ARGUMENTS[2]) {
             return "" + ARGUMENTS[2];
         }
-        return "/home/i_mogi";
+        var folderPicker = qi(XFolderPicker, 
+            serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
+        var message = "出力フォルダ取得";
+        folderPicker.setTitle(message);
+        folderPicker.setDescription(message);
+        if (folderPicker.execute() == ExecutableDialogResults.OK) {
+            return getNativePath(folderPicker.getDirectory());
+        } else {
+            console.log("キャンセルされました。");
+            application.exit();
+        }
     };
 
     /**
@@ -277,6 +298,7 @@ function StarConsole() {
 
 function StarApplication() {
     this.exit = function () {
+        throw new Error("Exit!");
     };
 }
 
