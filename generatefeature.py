@@ -474,7 +474,7 @@ function ExcelBook(path) {
 function GetStepFromBooleanCell(command, condition) {
     if (condition.match(POSITIVE_REGEXP)) {
         console.write("o");
-        return " * " + NormalizeStep(command) + "\n";
+        return "  " + NormalizeStep(command) + "\n";
     } else {
         console.write(".");
         return "";
@@ -486,7 +486,7 @@ function GetStepFromBooleanCell(command, condition) {
  */
 function GetStepFromTextCell(command, condition) {
     console.write("*");
-    return " * " + NormalizeStep(command) + " \""
+    return "  " + NormalizeStep(command) + " \""
         + NormalizeStep(condition).replace(/\"/g /* escape &quot; for syntax highlighting */, "\\\"")
         + "\"\n";
 }
