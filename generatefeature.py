@@ -258,12 +258,15 @@ function StarFilesystem() {
         var spreadsheetFiles = [];
         var files = new JFile(baseFolderPath).listFiles() || [];
         for (var i = 0; i < files.length; ++i) {
+            if (i % 10 == 0) {
+                console.write(".");
+            }
             var path = files[i].getAbsolutePath();
             if (files[i].isDirectory()) {
                 spreadsheetFiles = spreadsheetFiles.concat(this.getSpreadsheetFiles(path));
             } else {
                 if (path.match(/\.(xls|xlsx|ods)$/i)) {
-                    System.out.println(path);
+                    console.write("*");
                     spreadsheetFiles.push(path);
                 }
             }
@@ -283,6 +286,7 @@ function StarFilesystem() {
 function StarConsole() {
     this.write = function (message) {
         System.out.print("" + message);
+        System.out.flush();
     };
 
     this.log = function (message) {
