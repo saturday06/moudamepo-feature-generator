@@ -5,7 +5,7 @@
 # Automatic feature generation
 #
 # Usage: 
-#   ./spec.py inputdirectory outputdirectory
+#   ./generatefeature.py inputdirectory outputdirectory
 #
 
 generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
