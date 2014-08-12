@@ -39,6 +39,7 @@ if (STAR) {
     importClass(Packages.com.sun.star.table.XCellRange);
     importClass(Packages.com.sun.star.text.XText);
     importClass(Packages.com.sun.star.ui.dialogs.XFolderPicker);
+    importClass(Packages.com.sun.star.view.XSelectionSupplier);
 
     System.out.println("StarOffice !");
     function qi(interfaceClass, object) {
@@ -342,7 +343,7 @@ function StarBook(path) {
             };
 
             this.activate = function() {
-                // qi(XXX, qi(XModel, starBook).getCurrentController()).select(starCell);
+                qi(XSelectionSupplier, qi(XModel, starBook).getCurrentController()).select(starCell);
             };
         };
 
@@ -410,6 +411,7 @@ function ExcelBook(path) {
             };
 
             this.activate = function() {
+                excelCell.Activate();
             };
 
             this.getSheet = function() {
