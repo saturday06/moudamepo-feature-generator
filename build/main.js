@@ -58,14 +58,9 @@ function getNativePath(starPath) {
     return decodeURI((starPath + "").replace(regexp, ""));
 }
 
-// -*- coding: shift_jis-dos -*-
-
-var DECIDION_TABLE_MAX_RIGHT = 200;
-var DECIDION_TABLE_MAX_BOTTOM = 200;
-var DECIDION_TABLE_MAX_IGNORED_LINES = 20;
-
 var POSITIVE_REGEXP = /[ÅõÇxY]/;
 var NEGATIVE_REGEXP = /[Å~ÇmN]/;
+var IGNORE_REGEXP = /[ -Å]]/;
 var BRACKET_REGEXP = /[ÅgÅhÅuÅvÅwÅxÅyÅz]/;
 
 function WindowsFilesystem() {
@@ -308,6 +303,9 @@ if (STAR) {
  * LibreOffice Calc
  */
 function StarBook(path) {
+    var DECIDION_TABLE_MAX_RIGHT = 200;
+    var DECIDION_TABLE_MAX_BOTTOM = 200;
+    var DECIDION_TABLE_MAX_IGNORED_LINES = 20;
     var readOnly = new PropertyValue();
     readOnly.Name = "ReadOnly";
     readOnly.Value = true;
@@ -360,6 +358,48 @@ function StarBook(path) {
                 qi(XViewSplitable, currentController).getSplitColumn() : 0;
         };
 
+        this.getWidth = function() {
+            var right = undefined;
+            var ignoredXLines = 0;
+            for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
+                var valueFound = false;
+                for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
+                    if (sheet.getCell(y, x).getValue().length > 0) {
+                        valueFound = true;
+                        break;
+                    }
+                }
+                if (valueFound) {
+                    ignoredXLines = 0;
+                    right = x;
+                } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
+                    break;
+                }
+            }
+            return right;
+        };
+
+        this.getHeight = function() {
+            var bottom = 0;
+            var ignoredYLines = 0;
+            for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
+                var valueFound = false;
+                for (var x = left; x <= right; ++x) {
+                    if (sheet.getCell(y, x).getValue().length > 0) {
+                        valueFound = true;
+                        break;
+                    }
+                }
+                if (valueFound) {
+                    ignoredYLines = 0;
+                    bottom = y;
+                } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
+                    break;
+                }
+            }
+            return bottom;
+        };
+
         this.getBook = function() {
             return book;
         };
@@ -390,7 +430,12 @@ function ExcelBook(path) {
     var excelApplication;
     var excelBook;
     var book = this;
-    
+    var xlByRows = 1;
+    var xlByColumns = 2;
+    var xlPrevious = 2;
+    var xlFormulas = -4123;
+    var xlPart = 2;
+
     function Sheet(excelSheet) {
         var sheet = this;
 
@@ -430,6 +475,16 @@ function ExcelBook(path) {
 
         this.getBook = function() {
             return book;
+        };
+
+        this.getWidth = function() {
+            return excelSheet.UsedRange.Find(
+                "*", excelSheet.Cells(1, 1), xlFormulas, xlPart, xlByColumns, xlPrevious).Column;
+        };
+
+        this.getHeight = function() {
+            return excelSheet.UsedRange.Find(
+                "*", excelSheet.Cells(1, 1), xlFormulas, xlPart, xlByRows, xlPrevious).Row;
         };
     }
 
@@ -537,46 +592,11 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
         return;
     }
 
-    // âEå¿Çåüçı
-    var right = 0;
-    var ignoredXLines = 0;
-    for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
-        var valueFound = false;
-        for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
-            if (sheet.getCell(y, x).getValue().length > 0) {
-                valueFound = true;
-                break;
-            }
-        }
-        if (valueFound) {
-            ignoredXLines = 0;
-            right = x;
-        } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-            break;
-        }
-    }
+    var right = sheet.getWidth();
     if (!right) {
         return;
     }
-
-    // â∫å¿Çåüçı
-    var bottom = 0;
-    var ignoredYLines = 0;
-    for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
-        var valueFound = false;
-        for (var x = left; x <= right; ++x) {
-            if (sheet.getCell(y, x).getValue().length > 0) {
-                valueFound = true;
-                break;
-            }
-        }
-        if (valueFound) {
-            ignoredYLines = 0;
-            bottom = y;
-        } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-            break;
-        }
-    }
+    var bottom = sheet.getHeight();
     if (!bottom) {
         return;
     }
