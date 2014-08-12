@@ -45,6 +45,7 @@ if (STAR) {
     importClass(Packages.com.sun.star.table.XCellRange);
     importClass(Packages.com.sun.star.text.XText);
     importClass(Packages.com.sun.star.ui.dialogs.XFolderPicker);
+    importClass(Packages.com.sun.star.view.XSelectionSupplier);
 
     System.out.println("StarOffice !");
     function qi(interfaceClass, object) {
@@ -264,12 +265,15 @@ function StarFilesystem() {
         var spreadsheetFiles = [];
         var files = new JFile(baseFolderPath).listFiles() || [];
         for (var i = 0; i < files.length; ++i) {
+            if (i % 10 == 0) {
+                console.write(".");
+            }
             var path = files[i].getAbsolutePath();
             if (files[i].isDirectory()) {
                 spreadsheetFiles = spreadsheetFiles.concat(this.getSpreadsheetFiles(path));
             } else {
                 if (path.match(/\.(xls|xlsx|ods)$/i)) {
-                    System.out.println(path);
+                    console.write("*");
                     spreadsheetFiles.push(path);
                 }
             }
@@ -289,6 +293,7 @@ function StarFilesystem() {
 function StarConsole() {
     this.write = function (message) {
         System.out.print("" + message);
+        System.out.flush();
     };
 
     this.log = function (message) {
@@ -344,7 +349,7 @@ function StarBook(path) {
             };
 
             this.activate = function() {
-                // qi(XXX, qi(XModel, starBook).getCurrentController()).select(starCell);
+                qi(XSelectionSupplier, qi(XModel, starBook).getCurrentController()).select(starCell);
             };
         };
 
@@ -412,6 +417,7 @@ function ExcelBook(path) {
             };
 
             this.activate = function() {
+                excelCell.Activate();
             };
 
             this.getSheet = function() {
