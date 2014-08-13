@@ -13,15 +13,10 @@ generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
 """
 #" /* magic comment for editor's syntax highlighting
 
-odBase64 = """
-%%%GENERATE_FEATURE_DUMMY_OD%%%
-"""
-
 import uno
 import unohelper
 
 import atexit
-import base64
 import datetime
 import os
 import signal
@@ -35,30 +30,8 @@ from com.sun.star.connection import NoConnectException
 from com.sun.star.util import Date
 from com.sun.star.beans import PropertyValue
 
-odFile = tempfile.NamedTemporaryFile()
-odFile.write(base64.b64decode(odBase64))
-#print(odFile.name)
-odFile.flush()
-
-scriptOdFile = tempfile.NamedTemporaryFile()
-#print(scriptOdFile.name)
-scriptOdFile.flush()
-
-generateFeatureJsPath = "Scripts/javascript/Library/GenerateFeature.js"
-zin = zipfile.ZipFile (odFile.name, 'r')
-zout = zipfile.ZipFile (scriptOdFile.name, 'w')
-for item in zin.infolist():
-    buffer = zin.read(item.filename)
-    #print(item.filename)
-    if (item.filename == generateFeatureJsPath):
-        zout.writestr(item, generateFeatureJs)
-    else:
-        zout.writestr(item, buffer)
-zout.close()
-zin.close()
-
 pipeName = "generatefeaturepipe"
-acceptArg = "--accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
+acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
 officePath = "soffice"
 process = Popen([officePath, acceptArg
@@ -87,6 +60,70 @@ if not ctx:
     raise Exception("Connection failure")
 
 desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+
+tempDir = tempfile.mkdtemp()
+emptyOdPath = tempDir + "/empty.odg"
+emptyOdExtractPath = tempDir + "/empty.odg.extract"
+emptyOdUrl = "file://" + emptyOdPath
+hiddenArg = PropertyValue()
+hiddenArg.Name = "Hidden"
+hiddenArg.Value = True
+emptyDocument = desktop.loadComponentFromURL("private:factory/sdraw", "_blank", 0, (hiddenArg,));
+emptyDocument.storeToURL(emptyOdUrl, ())
+emptyDocument.dispose()
+
+#scriptOdFile = tempfile.NamedTemporaryFile("w+b", -1, "ods")
+scriptOdPath = "/home/saturday06/tmpx/asdf.odg"
+scriptOdUrl = "file://" + scriptOdPath
+
+with zipfile.ZipFile(emptyOdPath, "r") as zin:
+    zin.extractall(emptyOdExtractPath)
+
+manifest = None
+with open(emptyOdExtractPath + "/META-INF/manifest.xml", "r") as f:
+    manifest = f.read()
+
+with open(emptyOdExtractPath + "/META-INF/manifest.xml", "w") as f:
+    f.write(manifest.replace("</manifest:manifest>", r"""
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/GenerateFeature.js" manifest:media-type=""/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/parcel-descriptor.xml" manifest:media-type=""/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/" manifest:media-type="application/binary"/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/" manifest:media-type="application/binary"/>
+  <manifest:file-entry manifest:full-path="Scripts/" manifest:media-type="application/binary"/>
+</manifest:manifest>
+""".strip()))
+
+scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
+if not os.path.exists(scriptDir):
+    os.makedirs(scriptDir)
+
+with open(scriptDir + "/GenerateFeature.js", "w") as f:
+    f.write(generateFeatureJs)
+
+with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
+    f.write(r"""
+<?xml version="1.0" encoding="UTF-8"?>
+<parcel language="JavaScript" xmlns:parcel="scripting.dtd">
+  <script language="JavaScript">
+    <locale lang="en">
+      <displayname value="GenerateFeature.js"/>
+      <description>GenerateFeature.js</description>
+    </locale>
+    <logicalname value="GenerateFeature.js"/>
+    <functionname value="GenerateFeature.js"/>
+  </script>
+</parcel>
+""".strip())
+
+with zipfile.ZipFile(scriptOdPath, "w") as zout:
+    for dir, subdirs, files in os.walk(emptyOdExtractPath):
+        arcdir = os.path.relpath(dir, emptyOdExtractPath)
+        if not arcdir == ".":
+            zout.write(dir, arcdir)
+        for file in files:
+            arcfile = os.path.join(os.path.relpath(dir, emptyOdExtractPath), file)
+            zout.write(os.path.join(dir, file), arcfile)
+
 macroExecutionModeArg = PropertyValue()
 macroExecutionModeArg.Name = "MacroExecutionMode"
 macroExecutionModeArg.Value = 4
@@ -95,27 +132,24 @@ readOnlyArg = PropertyValue()
 readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
-print("GenerateFeature")
-print("script: " + scriptOdFile.name)
-url = "file://" + scriptOdFile.name
 #print(url)
-document = desktop.loadComponentFromURL(url, "_blank", 0, (macroExecutionModeArg, readOnlyArg));
+document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
 
 scriptProvider = document.getScriptProvider();
 script = scriptProvider.getScript(macroUrl)
 
 try:
-  script.invoke(tuple(sys.argv), (), ())
+    script.invoke(tuple(sys.argv), (), ())
 finally:
-  try:
-      document.dispose()
-  except Exception: # __main__.DisposeException
-      None
-  try:
-      desktop.terminate()
-  except Exception: # __main__.DisposeException
-      None
-  process.terminate()
+    try:
+        document.dispose()
+    except Exception: # __main__.DisposeException
+        None
+    try:
+        desktop.terminate()
+    except Exception: # __main__.DisposeException
+        None
+    process.terminate()
 
 # magic comment terminator */
