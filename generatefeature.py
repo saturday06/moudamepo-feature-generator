@@ -69,14 +69,9 @@ function getNativePath(starPath) {
     return decodeURI((starPath + "").replace(regexp, ""));
 }
 
-// -*- coding: shift_jis-dos -*-
-
-var DECIDION_TABLE_MAX_RIGHT = 200;
-var DECIDION_TABLE_MAX_BOTTOM = 200;
-var DECIDION_TABLE_MAX_IGNORED_LINES = 20;
-
 var POSITIVE_REGEXP = /[○ＹY]/;
 var NEGATIVE_REGEXP = /[×ＮN]/;
+var IGNORE_REGEXP = /[ -‐]/;
 var BRACKET_REGEXP = /[“”「」『』【】]/;
 
 function WindowsFilesystem() {
@@ -319,6 +314,9 @@ if (STAR) {
  * LibreOffice Calc
  */
 function StarBook(path) {
+    var DECIDION_TABLE_MAX_RIGHT = 200;
+    var DECIDION_TABLE_MAX_BOTTOM = 200;
+    var DECIDION_TABLE_MAX_IGNORED_LINES = 20;
     var readOnly = new PropertyValue();
     readOnly.Name = "ReadOnly";
     readOnly.Value = true;
@@ -371,6 +369,48 @@ function StarBook(path) {
                 qi(XViewSplitable, currentController).getSplitColumn() : 0;
         };
 
+        this.getWidth = function() {
+            var right = undefined;
+            var ignoredXLines = 0;
+            for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
+                var valueFound = false;
+                for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
+                    if (sheet.getCell(y, x).getValue().length > 0) {
+                        valueFound = true;
+                        break;
+                    }
+                }
+                if (valueFound) {
+                    ignoredXLines = 0;
+                    right = x;
+                } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
+                    break;
+                }
+            }
+            return right;
+        };
+
+        this.getHeight = function() {
+            var bottom = 0;
+            var ignoredYLines = 0;
+            for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
+                var valueFound = false;
+                for (var x = left; x <= right; ++x) {
+                    if (sheet.getCell(y, x).getValue().length > 0) {
+                        valueFound = true;
+                        break;
+                    }
+                }
+                if (valueFound) {
+                    ignoredYLines = 0;
+                    bottom = y;
+                } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
+                    break;
+                }
+            }
+            return bottom;
+        };
+
         this.getBook = function() {
             return book;
         };
@@ -401,7 +441,12 @@ function ExcelBook(path) {
     var excelApplication;
     var excelBook;
     var book = this;
-    
+    var xlByRows = 1;
+    var xlByColumns = 2;
+    var xlPrevious = 2;
+    var xlFormulas = -4123;
+    var xlPart = 2;
+
     function Sheet(excelSheet) {
         var sheet = this;
 
@@ -441,6 +486,16 @@ function ExcelBook(path) {
 
         this.getBook = function() {
             return book;
+        };
+
+        this.getWidth = function() {
+            return excelSheet.UsedRange.Find(
+                "*", excelSheet.Cells(1, 1), xlFormulas, xlPart, xlByColumns, xlPrevious).Column;
+        };
+
+        this.getHeight = function() {
+            return excelSheet.UsedRange.Find(
+                "*", excelSheet.Cells(1, 1), xlFormulas, xlPart, xlByRows, xlPrevious).Row;
         };
     }
 
@@ -548,46 +603,11 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
         return;
     }
 
-    // 右限を検索
-    var right = 0;
-    var ignoredXLines = 0;
-    for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
-        var valueFound = false;
-        for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
-            if (sheet.getCell(y, x).getValue().length > 0) {
-                valueFound = true;
-                break;
-            }
-        }
-        if (valueFound) {
-            ignoredXLines = 0;
-            right = x;
-        } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-            break;
-        }
-    }
+    var right = sheet.getWidth();
     if (!right) {
         return;
     }
-
-    // 下限を検索
-    var bottom = 0;
-    var ignoredYLines = 0;
-    for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
-        var valueFound = false;
-        for (var x = left; x <= right; ++x) {
-            if (sheet.getCell(y, x).getValue().length > 0) {
-                valueFound = true;
-                break;
-            }
-        }
-        if (valueFound) {
-            ignoredYLines = 0;
-            bottom = y;
-        } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-            break;
-        }
-    }
+    var bottom = sheet.getHeight();
     if (!bottom) {
         return;
     }
@@ -732,181 +752,10 @@ try {
 """
 #" /* magic comment for editor's syntax highlighting
 
-odBase64 = """
-UEsDBBQACAgIAKpm3UIAAAAAAAAAAAAAAAAnAAAAQ29uZmlndXJhdGlvbnMyL2FjY2VsZXJhdG9y
-L2N1cnJlbnQueG1sAwBQSwcIAAAAAAIAAAAAAAAAUEsDBBQAAAgAAKpm3UIAAAAAAAAAAAAAAAAY
-AAAAQ29uZmlndXJhdGlvbnMyL2Zsb2F0ZXIvUEsDBBQAAAgAAKpm3UIAAAAAAAAAAAAAAAAfAAAA
-Q29uZmlndXJhdGlvbnMyL2ltYWdlcy9CaXRtYXBzL1BLAwQUAAAIAACqZt1CAAAAAAAAAAAAAAAA
-GAAAAENvbmZpZ3VyYXRpb25zMi9tZW51YmFyL1BLAwQUAAAIAACqZt1CAAAAAAAAAAAAAAAAGgAA
-AENvbmZpZ3VyYXRpb25zMi9wb3B1cG1lbnUvUEsDBBQAAAgAAKpm3UIAAAAAAAAAAAAAAAAcAAAA
-Q29uZmlndXJhdGlvbnMyL3Byb2dyZXNzYmFyL1BLAwQUAAAIAACqZt1CAAAAAAAAAAAAAAAAGgAA
-AENvbmZpZ3VyYXRpb25zMi9zdGF0dXNiYXIvUEsDBBQAAAgAAKpm3UIAAAAAAAAAAAAAAAAYAAAA
-Q29uZmlndXJhdGlvbnMyL3Rvb2xiYXIvUEsDBBQAAAgAAKpm3UIAAAAAAAAAAAAAAAAaAAAAQ29u
-ZmlndXJhdGlvbnMyL3Rvb2xwYW5lbC9QSwMEFAAICAgAqmbdQgAAAAAAAAAAAAAAAAsAAABjb250
-ZW50LnhtbO1azW7jNhC+9ylcLXqUZctxagux97a9JEDQpECvtETJRChRoOi/vRVoj8XupS36Br30
-BYr6ZXrYq1+hQ1KiaTtylMZou8bmEFsz3wxH3ww5JJOr18uUtuaYF4RlI6fb7jgtnIUsIlkycr65
-f+MOnNfjz65YHJMQBxELZynOhBuyTMBnC6yzItDakTPjWcBQQYogQykuAhEGLMdZZRXY6ECNpSWF
-WNHG5gpsWwu8FE2NJXbHFk2aj6zAtnXE0aKpscQCqbZ5zJoaLwvqxgxYT3MkyF4US0qyh5EzFSIP
-PG+xWLQXvTbjidcdDoee0pqAQ4PLZ5wqVBR6mGI5WOF1212vwqZYoKbxSawdUjZLJ5g3pgYJdJDV
-nOMCIPC6sjCbObJtduprnjSurnlSQ3M4RbxxnSnwbqn0oual0ots2xSJaU1+B94NKNWvm+ttXfG0
-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
-EgATBQAA2R8AAAAA
-"""
-
 import uno
 import unohelper
 
 import atexit
-import base64
 import datetime
 import os
 import signal
@@ -920,30 +769,8 @@ from com.sun.star.connection import NoConnectException
 from com.sun.star.util import Date
 from com.sun.star.beans import PropertyValue
 
-odFile = tempfile.NamedTemporaryFile()
-odFile.write(base64.b64decode(odBase64))
-#print(odFile.name)
-odFile.flush()
-
-scriptOdFile = tempfile.NamedTemporaryFile()
-#print(scriptOdFile.name)
-scriptOdFile.flush()
-
-generateFeatureJsPath = "Scripts/javascript/Library/GenerateFeature.js"
-zin = zipfile.ZipFile (odFile.name, 'r')
-zout = zipfile.ZipFile (scriptOdFile.name, 'w')
-for item in zin.infolist():
-    buffer = zin.read(item.filename)
-    #print(item.filename)
-    if (item.filename == generateFeatureJsPath):
-        zout.writestr(item, generateFeatureJs)
-    else:
-        zout.writestr(item, buffer)
-zout.close()
-zin.close()
-
 pipeName = "generatefeaturepipe"
-acceptArg = "--accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
+acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
 officePath = "soffice"
 process = Popen([officePath, acceptArg
@@ -972,6 +799,70 @@ if not ctx:
     raise Exception("Connection failure")
 
 desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+
+tempDir = tempfile.mkdtemp()
+emptyOdPath = tempDir + "/empty.odg"
+emptyOdExtractPath = tempDir + "/empty.odg.extract"
+emptyOdUrl = "file://" + emptyOdPath
+hiddenArg = PropertyValue()
+hiddenArg.Name = "Hidden"
+hiddenArg.Value = True
+emptyDocument = desktop.loadComponentFromURL("private:factory/sdraw", "_blank", 0, (hiddenArg,));
+emptyDocument.storeToURL(emptyOdUrl, ())
+emptyDocument.dispose()
+
+#scriptOdFile = tempfile.NamedTemporaryFile("w+b", -1, "ods")
+scriptOdPath = "/home/saturday06/tmpx/asdf.odg"
+scriptOdUrl = "file://" + scriptOdPath
+
+with zipfile.ZipFile(emptyOdPath, "r") as zin:
+    zin.extractall(emptyOdExtractPath)
+
+manifest = None
+with open(emptyOdExtractPath + "/META-INF/manifest.xml", "r") as f:
+    manifest = f.read()
+
+with open(emptyOdExtractPath + "/META-INF/manifest.xml", "w") as f:
+    f.write(manifest.replace("</manifest:manifest>", r"""
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/GenerateFeature.js" manifest:media-type=""/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/parcel-descriptor.xml" manifest:media-type=""/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/" manifest:media-type="application/binary"/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/" manifest:media-type="application/binary"/>
+  <manifest:file-entry manifest:full-path="Scripts/" manifest:media-type="application/binary"/>
+</manifest:manifest>
+""".strip()))
+
+scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
+if not os.path.exists(scriptDir):
+    os.makedirs(scriptDir)
+
+with open(scriptDir + "/GenerateFeature.js", "w") as f:
+    f.write(generateFeatureJs)
+
+with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
+    f.write(r"""
+<?xml version="1.0" encoding="UTF-8"?>
+<parcel language="JavaScript" xmlns:parcel="scripting.dtd">
+  <script language="JavaScript">
+    <locale lang="en">
+      <displayname value="GenerateFeature.js"/>
+      <description>GenerateFeature.js</description>
+    </locale>
+    <logicalname value="GenerateFeature.js"/>
+    <functionname value="GenerateFeature.js"/>
+  </script>
+</parcel>
+""".strip())
+
+with zipfile.ZipFile(scriptOdPath, "w") as zout:
+    for dir, subdirs, files in os.walk(emptyOdExtractPath):
+        arcdir = os.path.relpath(dir, emptyOdExtractPath)
+        if not arcdir == ".":
+            zout.write(dir, arcdir)
+        for file in files:
+            arcfile = os.path.join(os.path.relpath(dir, emptyOdExtractPath), file)
+            zout.write(os.path.join(dir, file), arcfile)
+
 macroExecutionModeArg = PropertyValue()
 macroExecutionModeArg.Name = "MacroExecutionMode"
 macroExecutionModeArg.Value = 4
@@ -980,27 +871,24 @@ readOnlyArg = PropertyValue()
 readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
-print("GenerateFeature")
-print("script: " + scriptOdFile.name)
-url = "file://" + scriptOdFile.name
 #print(url)
-document = desktop.loadComponentFromURL(url, "_blank", 0, (macroExecutionModeArg, readOnlyArg));
+document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
 
 scriptProvider = document.getScriptProvider();
 script = scriptProvider.getScript(macroUrl)
 
 try:
-  script.invoke(tuple(sys.argv), (), ())
+    script.invoke(tuple(sys.argv), (), ())
 finally:
-  try:
-      document.dispose()
-  except Exception: # __main__.DisposeException
-      None
-  try:
-      desktop.terminate()
-  except Exception: # __main__.DisposeException
-      None
-  process.terminate()
+    try:
+        document.dispose()
+    except Exception: # __main__.DisposeException
+        None
+    try:
+        desktop.terminate()
+    except Exception: # __main__.DisposeException
+        None
+    process.terminate()
 
 # magic comment terminator */
