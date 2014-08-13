@@ -686,7 +686,7 @@ function GetExcelColumnName(Index) {
 /**
  * http://stackoverflow.com/a/20260831
  */
-function objToString(obj, level)
+function ObjToString(obj, level)
 {
     if (level > 10) {
         return "!!! level too deep"
@@ -698,7 +698,7 @@ function objToString(obj, level)
         }
         if (obj[i] instanceof Object) {
             out += i + " (Object):\n";
-            out += objToString(obj[i], level + 1);
+            out += ObjToString(obj[i], level + 1);
         } else {
             out += i + ": " + obj[i] + "\n";
         }
@@ -706,34 +706,91 @@ function objToString(obj, level)
     return out;
 }
 
-try {
-    var inputFolder = filesystem.getInputFolder();
-    var outputFolder = filesystem.getOutputFolder();
-
-    console.log(inputFolder + "から試験仕様書を検索しています");
-    var message = "\n";
-    var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
-    for (var i = 0; i < filePaths.length; ++i) {
-        message += filePaths[i] + "\n";
+function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
+    var keys = [
+        "HKEY_CLASSES_ROOT\\Software\\LibreOffice\\LibreOffice\\Path",
+        "HKEY_CLASSES_ROOT\\Software\\OpenOffice\\OpenOffice\\Path"
+    ];
+    var installDir;
+    var shell = new ActiveXObject("WScript.Shell");
+    for (var i = 0; i < keys.length; i++) {
+        try {
+            installDir = shell.RegRead(keys[i]);
+            break;
+        } catch (e) {
+        }
     }
-    message += filePaths.length + "件見つかりました"
-    console.log(message);
-
-    for (var i = 0; i < filePaths.length; ++i) {
-        CreateFeature(filePaths[i], outputFolder);
+    console.log("python=" + installDir + "program\\python.exe");
+    var fso = new ActiveXObject("Scripting.FileSystemObject");
+    var TemporaryFolder = 2;
+    var tempAppDir = fso.GetSpecialFolder(TemporaryFolder) + "\\SOfficeFeatureGenerator";
+    var tempProcessDir = tempAppDir + "\\" + fso.GetTempName();
+    if (!fso.FolderExists(tempAppDir)) {
+        fso.CreateFolder(tempAppDir);
     }
-} catch (e) {
-    console.log(e);
-    console.log(objToString(e, 1));
-    if (typeof e.rhinoException != 'undefined') {
-        e.rhinoException.printStackTrace();
-    } else if (typeof e.javaException != 'undefined') {
-        e.javaException.printStackTrace();
-    }
+    fso.CreateFolder(tempProcessDir);
+    var jsPath = tempProcessDir + "\\GenerateFeature.js";
+    var pyPath = tempProcessDir + "\\RunSOfficeScript.py";
+    var ForReading = 1;
+    var ForWriting = 2;
+    var scriptFile = fso.OpenTextFile(WScript.ScriptFullName, ForReading);
+    var scriptText = scriptFile.ReadAll();
+    scriptFile.Close();
+    console.log(tempProcessDir);
+    var separator = "!!!!!" + "SEPARATOR" + "!!!!!";
 
-    if (typeof e.stack != 'undefined') {
-        console.log(e.stack);
-    }
+    var jsFile = fso.OpenTextFile(jsPath, ForWriting, true);
+    jsFile.Write(scriptText.replace(new RegExp(separator + "[\\s\\S]*", "m"), "*/"));
+    jsFile.Close();
 
-    throw e;
+    var pyFile = fso.OpenTextFile(pyPath, ForWriting, true);
+    pyFile.Write(scriptText.replace(new RegExp("[\\s\\S]*" + separator, "m"), ""));
+    pyFile.Close();
+
+    shell.run("python \"" + pyFile + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"");
 }
+
+function Main() {
+    try {
+        var inputFolder = filesystem.getInputFolder();
+        var outputFolder = filesystem.getOutputFolder();
+        if (WINDOWS) {
+    //        try {
+                // new ActiveXObject("Excel.Application")
+    //        } catch (e) {
+                UseStarOfficeVariantInWindows(inputFolder, outputFolder);
+                return;
+    //        }
+        }
+        console.log(inputFolder + "から試験仕様書を検索しています");
+        var message = "\n";
+        var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
+        for (var i = 0; i < filePaths.length; ++i) {
+            message += filePaths[i] + "\n";
+        }
+        message += filePaths.length + "件見つかりました"
+        console.log(message);
+    
+        for (var i = 0; i < filePaths.length; ++i) {
+            CreateFeature(filePaths[i], outputFolder);
+        }
+    } catch (e) {
+        console.log(e);
+        console.log(ObjToString(e, 1));
+        if (typeof e.rhinoException != 'undefined') {
+            e.rhinoException.printStackTrace();
+        } else if (typeof e.javaException != 'undefined') {
+            e.javaException.printStackTrace();
+        }
+    
+        if (typeof e.stack != 'undefined') {
+            console.log(e.stack);
+        }
+    
+        throw e;
+    }
+}
+
+Main();
+
+/* !!!!!SEPARATOR!!!!!
