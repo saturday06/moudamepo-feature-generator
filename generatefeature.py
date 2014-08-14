@@ -8,7 +8,7 @@
 #   ./generatefeature.py inputdirectory outputdirectory
 #
 
-generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
+generateFeatureJs = ur""" //" // magic comment for editor's syntax highlighing
 // -*- coding: shift_jis-dos -*-
 /**
  * Main
