@@ -87,20 +87,22 @@ function WindowsFilesystem() {
         adSaveCreateOverWrite: 2
     };
 
-    this.write = function (path, content) {
+    this.write = function (path, content, bom) {
         var stream = new ActiveXObject("ADODB.Stream");
         try {
             stream.Open();
             stream.Type = StreamTypeEnum.adTypeText;
             stream.Charset = "UTF-8";
             stream.WriteText(content.replace(/\r?\n/g, "\r\n"));
-            stream.Position = 0;
-            stream.Type = StreamTypeEnum.adTypeBinary;
-            stream.Position = 3; // skip BOM
-            binary = stream.Read();
-            stream.Close();
-            stream.Open();
-            stream.Write(binary);
+            if (!bom) {
+                stream.Position = 0;
+                stream.Type = StreamTypeEnum.adTypeBinary;
+                stream.Position = 3; // skip BOM
+                binary = stream.Read();
+                stream.Close();
+                stream.Open();
+                stream.Write(binary);
+            }
             stream.SaveToFile(path, SaveOptionsEnum.adSaveCreateOverWrite);
         } finally {
             stream.Close();
@@ -202,13 +204,15 @@ function WindowsApplication() {
 }
 
 function StarFilesystem() {
-    this.write = function (path, content) {
+    this.write = function (path, content, bom) {
         var printStream;
         try {
             printStream = new PrintStream(new JFile(path), "UTF-8");
-            printStream.write(0xef);
-            printStream.write(0xbb);
-            printStream.write(0xbf);
+            if (bom) {
+                printStream.write(0xef);
+                printStream.write(0xbb);
+                printStream.write(0xbf);
+            }
             printStream.print(content.replace(/\r?\n/g, "\r\n"));
         } finally {
             if (printStream) {
@@ -696,7 +700,7 @@ function CreateFeature(path, outputFolder) {
                 continue;
             }
             var outputPath = outputFolder + FILE_SEPARATOR + filesystem.getBaseName(path) + "_" + sheet.getName() + ".feature";
-            filesystem.write(outputPath, feature);
+            filesystem.write(outputPath, feature, true);
         }
     } finally {
         try {
@@ -787,9 +791,11 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
     var pyText = scriptText.replace(new RegExp("[\\s\\S]*" + separator + "[\\s\\S]*?/\\*", "m"), "");
     filesystem.write(pyPath, pyText);
 
-    var commandText = "\"" + installDir + "program\\python.exe\" \"" + pyPath + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"";
+    // OpenOffice4.lは、なぜかパイプでスクリプトを渡さないとimport unoが失敗する
+    var commandText = "type \"" + pyPath + "\" | \"" + installDir + "program\\python.exe\" - \"" + inputFolder + "\" \"" + outputFolder + "\" \"" + jsPath + "\"";
     var commandPath = tempProcessDir + "\\RunPython.bat";
     var commandFile = fso.CreateTextFile(commandPath, true);
+    commandFile.WriteLine("cd /d \"" + installDir + "program\"");
     commandFile.WriteLine(commandText);
     commandFile.Close();
 
@@ -873,7 +879,7 @@ from com.sun.star.beans import PropertyValue
 
 if not 'generateFeatureJs' in locals():
     generateFeatureJs = None
-    with codecs.open(os.path.abspath(os.path.dirname(__file__)) + "/GenerateFeature.js", encoding='utf-8') as f:
+    with codecs.open(sys.argv[3], encoding='utf-8') as f:
         generateFeatureJs = f.read()
 
 pipeName = "generatefeaturepipe"
@@ -943,7 +949,7 @@ scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
 if not os.path.exists(scriptDir):
     os.makedirs(scriptDir)
 
-with open(scriptDir + "/GenerateFeature.js", "w") as f:
+with codecs.open(scriptDir + "/GenerateFeature.js", "w", encoding='utf-8') as f:
     f.write(generateFeatureJs)
 
 with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
