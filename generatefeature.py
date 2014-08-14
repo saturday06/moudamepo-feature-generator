@@ -406,46 +406,11 @@ function StarBook(path) {
         };
 
         this.getWidth = function() {
-            var right = undefined;
-            var ignoredXLines = 0;
-            for (var x = this.getTableLeft(); x < DECIDION_TABLE_MAX_RIGHT; ++x) {
-                var valueFound = false;
-                for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
-                    if (sheet.getCell(y, x).getValue().length > 0) {
-                        valueFound = true;
-                        break;
-                    }
-                }
-                if (valueFound) {
-                    ignoredXLines = 0;
-                    right = x;
-                } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-                    break;
-                }
-            }
-            return right;
+            return DECIDION_TABLE_MAX_RIGHT;
         };
 
         this.getHeight = function() {
-            var right = this.getWidth();
-            var bottom = 0;
-            var ignoredYLines = 0;
-            for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_RIGHT; ++y) {
-                var valueFound = false;
-                for (var x = this.getTableLeft(); x <= right; ++x) {
-                    if (sheet.getCell(y, x).getValue().length > 0) {
-                        valueFound = true;
-                        break;
-                    }
-                }
-                if (valueFound) {
-                    ignoredYLines = 0;
-                    bottom = y;
-                } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-                    break;
-                }
-            }
-            return bottom;
+            return DECIDION_TABLE_MAX_BOTTOM;
         };
 
         this.getBook = function() {
@@ -640,14 +605,43 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
         return;
     }
 
-    var right = sheet.getWidth();
+    var left = sheet.getTableLeft();
+    var top = sheet.getTableTop();
+    var maxRight = sheet.getWidth();
+    var maxBottom = sheet.getHeight();
+
+    var right;
+    for (var x = maxRight; x >= left; --x) {
+        for (var y = maxBottom; y >= top; --y) {
+            if (sheet.getCell(y, x).getValue().length > 0) {
+                right = x;
+                break;
+            }
+        }
+        if (right) {
+            break;
+        }
+    }
     if (!right) {
         return;
     }
-    var bottom = sheet.getHeight();
+
+    var bottom;
+    for (var y = maxBottom; y >= top; --y) {
+        for (var x = right; x >= left; --x) {
+            if (sheet.getCell(y, x).getValue().length > 0) {
+                bottom = y;
+                break;
+            }
+        }
+        if (bottom) {
+            break;
+        }
+    }
     if (!bottom) {
         return;
     }
+
     console.log("デシジョンテーブルの範囲: (top=" + top + ", left=" + left + ") - (bottom=" + bottom + ", right=" + right + ")");
 
     var getStepFunctions = new Array(bottom + 1);
@@ -854,13 +848,12 @@ Main();
 
 """
 #" /* magic comment for editor's syntax highlighting
-#!/usr/bin/env python
-# -*- coding: us-ascii-unix -*-
+# Launcher fragment
+# -*- coding: us-ascii-dos -*-
 
 import uno
 import unohelper
 
-import atexit
 import datetime
 import os
 import re
@@ -874,7 +867,6 @@ from time import sleep
 from subprocess import Popen
 from com.sun.star.script.provider import XScriptContext
 from com.sun.star.connection import NoConnectException
-from com.sun.star.util import Date
 from com.sun.star.beans import PropertyValue
 
 if not 'generateFeatureJs' in locals():
