@@ -821,7 +821,7 @@ function Main() {
         var outputFolder = filesystem.getOutputFolder();
         if (WINDOWS) {
             try {
-                new ActiveXObject("Excel.Application")
+                new ActiveXObject("Excel.Application");
             } catch (e) {
                 UseStarOfficeVariantInWindows(inputFolder, outputFolder);
                 return;
@@ -953,7 +953,11 @@ scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
 if not os.path.exists(scriptDir):
     os.makedirs(scriptDir)
 
-with codecs.open(scriptDir + "/GenerateFeature.js", "w", encoding='utf-8') as f:
+if os.name == 'nt':
+    encoding = sys.stdin.encoding
+else:
+    encoding = "utf-8"
+with codecs.open(scriptDir + "/GenerateFeature.js", "w", encoding) as f:
     f.write(generateFeatureJs)
 
 with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
