@@ -182,8 +182,8 @@ function WindowsFilesystem() {
         return filePaths;
     };
 
-    this.createFolder = function () {
-        fso.FolderExists(outputFolder) || fso.CreateFolder(outputFolder);
+    this.createFolder = function (path) {
+        fso.FolderExists(path) || fso.CreateFolder(path);
     };
 
     this.getBaseName = function (path) {
