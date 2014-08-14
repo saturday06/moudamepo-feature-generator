@@ -776,9 +776,11 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
     var pyText = scriptText.replace(new RegExp("[\\s\\S]*" + separator + "[\\s\\S]*?/\\*", "m"), "");
     filesystem.write(pyPath, pyText);
 
-    var commandText = "\"" + installDir + "program\\python.exe\" \"" + pyPath + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"";
+    // OpenOffice4.lは、なぜかパイプでスクリプトを渡さないとimport unoが失敗する
+    var commandText = "type \"" + pyPath + "\" | \"" + installDir + "program\\python.exe\" - \"" + inputFolder + "\" \"" + outputFolder + "\" \"" + jsPath + "\"";
     var commandPath = tempProcessDir + "\\RunPython.bat";
     var commandFile = fso.CreateTextFile(commandPath, true);
+    commandFile.WriteLine("cd /d \"" + installDir + "program\"");
     commandFile.WriteLine(commandText);
     commandFile.Close();
 
