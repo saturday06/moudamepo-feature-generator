@@ -12,6 +12,9 @@ if (STAR) {
     var FILE_SEPARATOR = JFile.separator;
     importClass(Packages.java.lang.System);
     importClass(Packages.java.io.PrintStream);
+    importClass(Packages.java.io.PrintWriter);
+    importClass(Packages.java.io.FileOutputStream);
+    importClass(Packages.java.io.OutputStreamWriter);
     importClass(Packages.com.sun.star.beans.PropertyValue);
     importClass(Packages.com.sun.star.container.XIndexAccess);
     importClass(Packages.com.sun.star.container.XNamed);
@@ -50,12 +53,11 @@ if (STAR) {
 }
 
 function getStarPath(nativePath) {
-    return ("file://" + (WINDOWS ? "/" : "") + nativePath).replace(/\\/, "/");
+    return "file://" + (nativePath + "").replace(/\\/g, "/").replace(/^\/?/, "/");
 }
 
 function getNativePath(starPath) {
-    var regexp = WINDOWS ? /^file:\/\/\// : /^file:\/\//
-    return decodeURI((starPath + "").replace(regexp, ""));
+    return decodeURI((starPath + "").replace(/^file:\/\//, "").replace(/^\/?([a-z]:)/i, "\1"));
 }
 
 var POSITIVE_REGEXP = /[○ＹY]/;
@@ -67,6 +69,7 @@ function WindowsFilesystem() {
     var fso = new ActiveXObject("Scripting.FileSystemObject");
     var BIF_NONEWFOLDERBUTTON = 512;
     var StreamTypeEnum = {
+        adTypeBinary: 1,
         adTypeText: 2
     };
     var SaveOptionsEnum = {
@@ -80,6 +83,13 @@ function WindowsFilesystem() {
             stream.Type = StreamTypeEnum.adTypeText;
             stream.Charset = "UTF-8";
             stream.WriteText(content.replace(/\r?\n/g, "\r\n"));
+            stream.Position = 0;
+            stream.Type = StreamTypeEnum.adTypeBinary;
+            stream.Position = 3; // skip BOM
+            binary = stream.Read();
+            stream.Close();
+            stream.Open();
+            stream.Write(binary);
             stream.SaveToFile(path, SaveOptionsEnum.adSaveCreateOverWrite);
         } finally {
             stream.Close();
@@ -200,8 +210,8 @@ function StarFilesystem() {
      * 入力フォルダ取得
      */
     this.getInputFolder = function () {
-        if (ARGUMENTS[1]) {
-            return "" + ARGUMENTS[1];
+        if (ARGUMENTS[2]) {
+            return "" + ARGUMENTS[2];
         }
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
@@ -220,8 +230,8 @@ function StarFilesystem() {
      * 出力フォルダ取得
      */
     this.getOutputFolder = function () {
-        if (ARGUMENTS[2]) {
-            return "" + ARGUMENTS[2];
+        if (ARGUMENTS[3]) {
+            return "" + ARGUMENTS[3];
         }
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
@@ -269,13 +279,33 @@ function StarFilesystem() {
 }
 
 function StarConsole() {
+    var logPath = ARGUMENTS[1];
     this.write = function (message) {
-        System.out.print("" + message);
-        System.out.flush();
+        // UTF-8文字列をファイルに追記するもっと良い方法
+        var fos;
+        var osw;
+        try {
+            fos = new FileOutputStream(logPath, true);
+            osw = new OutputStreamWriter(fos, "UTF-8");
+            osw.write("" + message);
+        } finally {
+            try {
+                if (osw) {
+                    osw.close();
+                }
+            } catch (e) {
+            }
+            try {
+                if (fos) {
+                    fos.close();
+                }
+            } catch (e) {
+            }
+        }
     };
 
     this.log = function (message) {
-        System.out.println("" + message);
+        this.write(message + "\n");
     };
 }
 
@@ -324,6 +354,8 @@ function StarBook(path) {
     var starBook = qi(XSpreadsheetDocument, qi(XComponentLoader, desktop).loadComponentFromURL(url, "_blank", 0, properties));
 
     function Sheet(starSheet) {
+        var sheet = this;
+
         function Cell(starCell) {
             this.getValue = function () {
                 return qi(XText, starCell).getString() + "";
@@ -361,9 +393,9 @@ function StarBook(path) {
         this.getWidth = function() {
             var right = undefined;
             var ignoredXLines = 0;
-            for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
+            for (var x = this.getTableLeft(); x < DECIDION_TABLE_MAX_RIGHT; ++x) {
                 var valueFound = false;
-                for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
+                for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
                     if (sheet.getCell(y, x).getValue().length > 0) {
                         valueFound = true;
                         break;
@@ -380,11 +412,12 @@ function StarBook(path) {
         };
 
         this.getHeight = function() {
+            var right = this.getWidth();
             var bottom = 0;
             var ignoredYLines = 0;
-            for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
+            for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_RIGHT; ++y) {
                 var valueFound = false;
-                for (var x = left; x <= right; ++x) {
+                for (var x = this.getTableLeft(); x <= right; ++x) {
                     if (sheet.getCell(y, x).getValue().length > 0) {
                         valueFound = true;
                         break;
@@ -631,11 +664,7 @@ function CreateFeature(path, outputFolder) {
     var book;
     try {
         if (WINDOWS) {
-            try {
-                book = new ExcelBook(path);
-            } catch (e) {
-                book = new StarBook(path);
-            }
+            book = new ExcelBook(path);
         } else {
             book = new StarBook(path);
         }
@@ -728,39 +757,53 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
     if (!fso.FolderExists(tempAppDir)) {
         fso.CreateFolder(tempAppDir);
     }
-    fso.CreateFolder(tempProcessDir);
-    var jsPath = tempProcessDir + "\\GenerateFeature.js";
-    var pyPath = tempProcessDir + "\\RunSOfficeScript.py";
     var ForReading = 1;
     var ForWriting = 2;
     var scriptFile = fso.OpenTextFile(WScript.ScriptFullName, ForReading);
     var scriptText = scriptFile.ReadAll();
     scriptFile.Close();
+
+    fso.CreateFolder(tempProcessDir);
     console.log(tempProcessDir);
-    var separator = "!!!!!" + "SEPARATOR" + "!!!!!";
+    var separator = "<<<<<" + "SEPARATOR" + ">>>>>";
 
-    var jsFile = fso.OpenTextFile(jsPath, ForWriting, true);
-    jsFile.Write(scriptText.replace(new RegExp(separator + "[\\s\\S]*", "m"), "*/"));
-    jsFile.Close();
+    var jsPath = tempProcessDir + "\\GenerateFeature.js";
+    var jsText = scriptText.replace(new RegExp(separator + "[\\s\\S]*", "m"), "")
+    jsText = jsText.replace(new RegExp("^[\\s\\S]*?/\\*", "m"), "/*");
+    filesystem.write(jsPath, jsText);
 
-    var pyFile = fso.OpenTextFile(pyPath, ForWriting, true);
-    pyFile.Write(scriptText.replace(new RegExp("[\\s\\S]*" + separator, "m"), ""));
-    pyFile.Close();
+    var pyPath = tempProcessDir + "\\RunSOfficeScript.py";
+    var pyText = scriptText.replace(new RegExp("[\\s\\S]*" + separator + "[\\s\\S]*?/\\*", "m"), "");
+    filesystem.write(pyPath, pyText);
 
-    shell.run("python \"" + pyFile + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"");
+    var commandText = "\"" + installDir + "program\\python.exe\" \"" + pyPath + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"";
+    var commandPath = tempProcessDir + "\\RunPython.bat";
+    var commandFile = fso.CreateTextFile(commandPath, true);
+    commandFile.WriteLine(commandText);
+    commandFile.Close();
+
+    var env = shell.Environment;
+    // stdoutとstderrをマージするためにバッチファイルを作っているが、unicode必須パス上では動かない
+    var command = "\"" + env("COMSPEC") + "\" /c \"" + commandPath + "\" 2>&1";
+    console.log(command);
+    var process = shell.Exec(command);
+    while (!process.StdOut.AtEndOfStream) {
+        console.write(process.StdOut.Read(1));
+    }
 }
 
 function Main() {
+    console.log("Main!");
     try {
         var inputFolder = filesystem.getInputFolder();
         var outputFolder = filesystem.getOutputFolder();
         if (WINDOWS) {
-    //        try {
-                // new ActiveXObject("Excel.Application")
-    //        } catch (e) {
+            //try {
+            //    new ActiveXObject("Excel.Application")
+            //} catch (e) {
                 UseStarOfficeVariantInWindows(inputFolder, outputFolder);
                 return;
-    //        }
+            //}
         }
         console.log(inputFolder + "から試験仕様書を検索しています");
         var message = "\n";
@@ -793,4 +836,4 @@ function Main() {
 
 Main();
 
-/* !!!!!SEPARATOR!!!!!
+// <<<<<SEPARATOR>>>>>

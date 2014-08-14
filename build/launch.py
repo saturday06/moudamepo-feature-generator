@@ -7,9 +7,11 @@ import unohelper
 import atexit
 import datetime
 import os
+import re
 import signal
 import sys
 import tempfile
+import threading
 import zipfile
 import codecs
 from time import sleep
@@ -29,7 +31,7 @@ acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
 officePath = "soffice"
 process = Popen([officePath, acceptArg
-                 #, "-nologo"
+                 , "-nologo"
                  , "-norestore"
                  , "-invisible"
                  #, "-minimized"
@@ -39,6 +41,7 @@ process = Popen([officePath, acceptArg
 ctx = None
 for i in range(20):
     print("Connectiong...")
+    sys.stdout.flush()
     try:
         localctx = uno.getComponentContext()
         resolver = localctx.getServiceManager().createInstanceWithContext(
@@ -56,18 +59,18 @@ if not ctx:
 desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
 
 tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
-emptyOdPath = tempDir + "/empty.odg"
-emptyOdExtractPath = tempDir + "/empty.odg.extract"
-emptyOdUrl = "file:///" + emptyOdPath
+emptyOdPath = tempDir + "/empty.ods"
+emptyOdExtractPath = tempDir + "/empty.ods.extract"
+emptyOdUrl = "file://" + re.sub(r'^/?', "/", emptyOdPath)
 hiddenArg = PropertyValue()
 hiddenArg.Name = "Hidden"
 hiddenArg.Value = True
-emptyDocument = desktop.loadComponentFromURL("private:factory/sdraw", "_blank", 0, (hiddenArg,));
+emptyDocument = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
 emptyDocument.storeToURL(emptyOdUrl, ())
 emptyDocument.dispose()
 
-scriptOdPath = tempDir + "/script.odg"
-scriptOdUrl = "file:///" + scriptOdPath
+scriptOdPath = tempDir + "/script.ods"
+scriptOdUrl = "file://" + re.sub(r'^/?', "/", scriptOdPath)
 
 with zipfile.ZipFile(emptyOdPath, "r") as zin:
     zin.extractall(emptyOdExtractPath)
@@ -125,16 +128,40 @@ readOnlyArg = PropertyValue()
 readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
-#print(url)
 document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
 
 scriptProvider = document.getScriptProvider();
 script = scriptProvider.getScript(macroUrl)
+logPath = tempDir + "/script.log"
+print("log=" + logPath);
+args = (sys.argv[0], logPath) + tuple(sys.argv[1:])
+print("args=%s" % (args,));
+sys.stdout.flush()
 
+def tailF():
+    print("tailf=" + logPath);
+    pos = 0
+    while True:
+        sleep(0.5)
+        if not os.path.exists(logPath):
+            continue
+        with codecs.open(logPath, encoding='utf-8') as f:
+            if f.seek(0, 2) == pos:
+                continue
+            f.seek(pos)
+            data = f.read()
+            sys.stdout.write(data)
+            sys.stdout.flush()
+            pos += len(data.encode('utf-8'))
+
+t = threading.Thread(target=tailF)
+t.daemon = True
+t.start()
 try:
-    script.invoke(tuple(sys.argv), (), ())
+    script.invoke(args, (), ())
 finally:
+    t.join(3)
     try:
         document.dispose()
     except Exception: # __main__.DisposeException
