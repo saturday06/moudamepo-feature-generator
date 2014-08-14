@@ -23,6 +23,9 @@ if (STAR) {
     var FILE_SEPARATOR = JFile.separator;
     importClass(Packages.java.lang.System);
     importClass(Packages.java.io.PrintStream);
+    importClass(Packages.java.io.PrintWriter);
+    importClass(Packages.java.io.FileOutputStream);
+    importClass(Packages.java.io.OutputStreamWriter);
     importClass(Packages.com.sun.star.beans.PropertyValue);
     importClass(Packages.com.sun.star.container.XIndexAccess);
     importClass(Packages.com.sun.star.container.XNamed);
@@ -61,12 +64,11 @@ if (STAR) {
 }
 
 function getStarPath(nativePath) {
-    return ("file://" + (WINDOWS ? "/" : "") + nativePath).replace(/\\/, "/");
+    return "file://" + (nativePath + "").replace(/\\/g, "/").replace(/^\/?/, "/");
 }
 
 function getNativePath(starPath) {
-    var regexp = WINDOWS ? /^file:\/\/\// : /^file:\/\//
-    return decodeURI((starPath + "").replace(regexp, ""));
+    return decodeURI((starPath + "").replace(/^file:\/\//, "").replace(/^\/?([a-z]:)/i, "\1"));
 }
 
 var POSITIVE_REGEXP = /[○ＹY]/;
@@ -78,6 +80,7 @@ function WindowsFilesystem() {
     var fso = new ActiveXObject("Scripting.FileSystemObject");
     var BIF_NONEWFOLDERBUTTON = 512;
     var StreamTypeEnum = {
+        adTypeBinary: 1,
         adTypeText: 2
     };
     var SaveOptionsEnum = {
@@ -91,6 +94,13 @@ function WindowsFilesystem() {
             stream.Type = StreamTypeEnum.adTypeText;
             stream.Charset = "UTF-8";
             stream.WriteText(content.replace(/\r?\n/g, "\r\n"));
+            stream.Position = 0;
+            stream.Type = StreamTypeEnum.adTypeBinary;
+            stream.Position = 3; // skip BOM
+            binary = stream.Read();
+            stream.Close();
+            stream.Open();
+            stream.Write(binary);
             stream.SaveToFile(path, SaveOptionsEnum.adSaveCreateOverWrite);
         } finally {
             stream.Close();
@@ -211,8 +221,8 @@ function StarFilesystem() {
      * 入力フォルダ取得
      */
     this.getInputFolder = function () {
-        if (ARGUMENTS[1]) {
-            return "" + ARGUMENTS[1];
+        if (ARGUMENTS[2]) {
+            return "" + ARGUMENTS[2];
         }
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
@@ -231,8 +241,8 @@ function StarFilesystem() {
      * 出力フォルダ取得
      */
     this.getOutputFolder = function () {
-        if (ARGUMENTS[2]) {
-            return "" + ARGUMENTS[2];
+        if (ARGUMENTS[3]) {
+            return "" + ARGUMENTS[3];
         }
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
@@ -280,13 +290,33 @@ function StarFilesystem() {
 }
 
 function StarConsole() {
+    var logPath = ARGUMENTS[1];
     this.write = function (message) {
-        System.out.print("" + message);
-        System.out.flush();
+        // UTF-8文字列をファイルに追記するもっと良い方法
+        var fos;
+        var osw;
+        try {
+            fos = new FileOutputStream(logPath, true);
+            osw = new OutputStreamWriter(fos, "UTF-8");
+            osw.write("" + message);
+        } finally {
+            try {
+                if (osw) {
+                    osw.close();
+                }
+            } catch (e) {
+            }
+            try {
+                if (fos) {
+                    fos.close();
+                }
+            } catch (e) {
+            }
+        }
     };
 
     this.log = function (message) {
-        System.out.println("" + message);
+        this.write(message + "\n");
     };
 }
 
@@ -335,6 +365,8 @@ function StarBook(path) {
     var starBook = qi(XSpreadsheetDocument, qi(XComponentLoader, desktop).loadComponentFromURL(url, "_blank", 0, properties));
 
     function Sheet(starSheet) {
+        var sheet = this;
+
         function Cell(starCell) {
             this.getValue = function () {
                 return qi(XText, starCell).getString() + "";
@@ -372,9 +404,9 @@ function StarBook(path) {
         this.getWidth = function() {
             var right = undefined;
             var ignoredXLines = 0;
-            for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
+            for (var x = this.getTableLeft(); x < DECIDION_TABLE_MAX_RIGHT; ++x) {
                 var valueFound = false;
-                for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
+                for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
                     if (sheet.getCell(y, x).getValue().length > 0) {
                         valueFound = true;
                         break;
@@ -391,11 +423,12 @@ function StarBook(path) {
         };
 
         this.getHeight = function() {
+            var right = this.getWidth();
             var bottom = 0;
             var ignoredYLines = 0;
-            for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
+            for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_RIGHT; ++y) {
                 var valueFound = false;
-                for (var x = left; x <= right; ++x) {
+                for (var x = this.getTableLeft(); x <= right; ++x) {
                     if (sheet.getCell(y, x).getValue().length > 0) {
                         valueFound = true;
                         break;
@@ -642,11 +675,7 @@ function CreateFeature(path, outputFolder) {
     var book;
     try {
         if (WINDOWS) {
-            try {
-                book = new ExcelBook(path);
-            } catch (e) {
-                book = new StarBook(path);
-            }
+            book = new ExcelBook(path);
         } else {
             book = new StarBook(path);
         }
@@ -697,7 +726,7 @@ function GetExcelColumnName(Index) {
 /**
  * http://stackoverflow.com/a/20260831
  */
-function objToString(obj, level)
+function ObjToString(obj, level)
 {
     if (level > 10) {
         return "!!! level too deep"
@@ -709,7 +738,7 @@ function objToString(obj, level)
         }
         if (obj[i] instanceof Object) {
             out += i + " (Object):\n";
-            out += objToString(obj[i], level + 1);
+            out += ObjToString(obj[i], level + 1);
         } else {
             out += i + ": " + obj[i] + "\n";
         }
@@ -717,40 +746,111 @@ function objToString(obj, level)
     return out;
 }
 
-try {
-    var inputFolder = filesystem.getInputFolder();
-    var outputFolder = filesystem.getOutputFolder();
-
-    console.log(inputFolder + "から試験仕様書を検索しています");
-    var message = "\n";
-    var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
-    for (var i = 0; i < filePaths.length; ++i) {
-        message += filePaths[i] + "\n";
+function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
+    var keys = [
+        "HKEY_CLASSES_ROOT\\Software\\LibreOffice\\LibreOffice\\Path",
+        "HKEY_CLASSES_ROOT\\Software\\OpenOffice\\OpenOffice\\Path"
+    ];
+    var installDir;
+    var shell = new ActiveXObject("WScript.Shell");
+    for (var i = 0; i < keys.length; i++) {
+        try {
+            installDir = shell.RegRead(keys[i]);
+            break;
+        } catch (e) {
+        }
     }
-    message += filePaths.length + "件見つかりました"
-    console.log(message);
-
-    for (var i = 0; i < filePaths.length; ++i) {
-        CreateFeature(filePaths[i], outputFolder);
+    console.log("python=" + installDir + "program\\python.exe");
+    var fso = new ActiveXObject("Scripting.FileSystemObject");
+    var TemporaryFolder = 2;
+    var tempAppDir = fso.GetSpecialFolder(TemporaryFolder) + "\\SOfficeFeatureGenerator";
+    var tempProcessDir = tempAppDir + "\\" + fso.GetTempName();
+    if (!fso.FolderExists(tempAppDir)) {
+        fso.CreateFolder(tempAppDir);
     }
-} catch (e) {
-    console.log(e);
-    console.log(objToString(e, 1));
-    if (typeof e.rhinoException != 'undefined') {
-        e.rhinoException.printStackTrace();
-    } else if (typeof e.javaException != 'undefined') {
-        e.javaException.printStackTrace();
-    }
+    var ForReading = 1;
+    var ForWriting = 2;
+    var scriptFile = fso.OpenTextFile(WScript.ScriptFullName, ForReading);
+    var scriptText = scriptFile.ReadAll();
+    scriptFile.Close();
 
-    if (typeof e.stack != 'undefined') {
-        console.log(e.stack);
-    }
+    fso.CreateFolder(tempProcessDir);
+    console.log(tempProcessDir);
+    var separator = "<<<<<" + "SEPARATOR" + ">>>>>";
 
-    throw e;
+    var jsPath = tempProcessDir + "\\GenerateFeature.js";
+    var jsText = scriptText.replace(new RegExp(separator + "[\\s\\S]*", "m"), "")
+    jsText = jsText.replace(new RegExp("^[\\s\\S]*?/\\*", "m"), "/*");
+    filesystem.write(jsPath, jsText);
+
+    var pyPath = tempProcessDir + "\\RunSOfficeScript.py";
+    var pyText = scriptText.replace(new RegExp("[\\s\\S]*" + separator + "[\\s\\S]*?/\\*", "m"), "");
+    filesystem.write(pyPath, pyText);
+
+    var commandText = "\"" + installDir + "program\\python.exe\" \"" + pyPath + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"";
+    var commandPath = tempProcessDir + "\\RunPython.bat";
+    var commandFile = fso.CreateTextFile(commandPath, true);
+    commandFile.WriteLine(commandText);
+    commandFile.Close();
+
+    var env = shell.Environment;
+    // stdoutとstderrをマージするためにバッチファイルを作っているが、unicode必須パス上では動かない
+    var command = "\"" + env("COMSPEC") + "\" /c \"" + commandPath + "\" 2>&1";
+    console.log(command);
+    var process = shell.Exec(command);
+    while (!process.StdOut.AtEndOfStream) {
+        console.write(process.StdOut.Read(1));
+    }
 }
+
+function Main() {
+    console.log("Main!");
+    try {
+        var inputFolder = filesystem.getInputFolder();
+        var outputFolder = filesystem.getOutputFolder();
+        if (WINDOWS) {
+            try {
+                new ActiveXObject("Excel.Application")
+            } catch (e) {
+                UseStarOfficeVariantInWindows(inputFolder, outputFolder);
+                return;
+            }
+        }
+        console.log(inputFolder + "から試験仕様書を検索しています");
+        var message = "\n";
+        var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
+        for (var i = 0; i < filePaths.length; ++i) {
+            message += filePaths[i] + "\n";
+        }
+        message += filePaths.length + "件見つかりました"
+        console.log(message);
+
+        for (var i = 0; i < filePaths.length; ++i) {
+            CreateFeature(filePaths[i], outputFolder);
+        }
+    } catch (e) {
+        console.log(e);
+        console.log(ObjToString(e, 1));
+        if (typeof e.rhinoException != 'undefined') {
+            e.rhinoException.printStackTrace();
+        } else if (typeof e.javaException != 'undefined') {
+            e.javaException.printStackTrace();
+        }
+        if (typeof e.stack != 'undefined') {
+            console.log(e.stack);
+        }
+        throw e;
+    }
+}
+
+Main();
+
+// <<<<<SEPARATOR>>>>>
 
 """
 #" /* magic comment for editor's syntax highlighting
+#!/usr/bin/env python
+# -*- coding: us-ascii-unix -*-
 
 import uno
 import unohelper
@@ -758,10 +858,13 @@ import unohelper
 import atexit
 import datetime
 import os
+import re
 import signal
 import sys
 import tempfile
+import threading
 import zipfile
+import codecs
 from time import sleep
 from subprocess import Popen
 from com.sun.star.script.provider import XScriptContext
@@ -769,12 +872,17 @@ from com.sun.star.connection import NoConnectException
 from com.sun.star.util import Date
 from com.sun.star.beans import PropertyValue
 
+if not 'generateFeatureJs' in locals():
+    generateFeatureJs = None
+    with codecs.open(os.path.abspath(os.path.dirname(__file__)) + "/GenerateFeature.js", encoding='utf-8') as f:
+        generateFeatureJs = f.read()
+
 pipeName = "generatefeaturepipe"
 acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
 officePath = "soffice"
 process = Popen([officePath, acceptArg
-                 #, "-nologo"
+                 , "-nologo"
                  , "-norestore"
                  , "-invisible"
                  #, "-minimized"
@@ -784,6 +892,7 @@ process = Popen([officePath, acceptArg
 ctx = None
 for i in range(20):
     print("Connectiong...")
+    sys.stdout.flush()
     try:
         localctx = uno.getComponentContext()
         resolver = localctx.getServiceManager().createInstanceWithContext(
@@ -800,20 +909,19 @@ if not ctx:
 
 desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
 
-tempDir = tempfile.mkdtemp()
-emptyOdPath = tempDir + "/empty.odg"
-emptyOdExtractPath = tempDir + "/empty.odg.extract"
-emptyOdUrl = "file://" + emptyOdPath
+tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
+emptyOdPath = tempDir + "/empty.ods"
+emptyOdExtractPath = tempDir + "/empty.ods.extract"
+emptyOdUrl = "file://" + re.sub(r'^/?', "/", emptyOdPath)
 hiddenArg = PropertyValue()
 hiddenArg.Name = "Hidden"
 hiddenArg.Value = True
-emptyDocument = desktop.loadComponentFromURL("private:factory/sdraw", "_blank", 0, (hiddenArg,));
+emptyDocument = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
 emptyDocument.storeToURL(emptyOdUrl, ())
 emptyDocument.dispose()
 
-#scriptOdFile = tempfile.NamedTemporaryFile("w+b", -1, "ods")
-scriptOdPath = "/home/saturday06/tmpx/asdf.odg"
-scriptOdUrl = "file://" + scriptOdPath
+scriptOdPath = tempDir + "/script.ods"
+scriptOdUrl = "file://" + re.sub(r'^/?', "/", scriptOdPath)
 
 with zipfile.ZipFile(emptyOdPath, "r") as zin:
     zin.extractall(emptyOdExtractPath)
@@ -871,16 +979,40 @@ readOnlyArg = PropertyValue()
 readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
-#print(url)
 document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
 
 scriptProvider = document.getScriptProvider();
 script = scriptProvider.getScript(macroUrl)
+logPath = tempDir + "/script.log"
+print("log=" + logPath);
+args = (sys.argv[0], logPath) + tuple(sys.argv[1:])
+print("args=%s" % (args,));
+sys.stdout.flush()
 
+def tailF():
+    print("tailf=" + logPath);
+    pos = 0
+    while True:
+        sleep(0.5)
+        if not os.path.exists(logPath):
+            continue
+        with codecs.open(logPath, encoding='utf-8') as f:
+            if f.seek(0, 2) == pos:
+                continue
+            f.seek(pos)
+            data = f.read()
+            sys.stdout.write(data)
+            sys.stdout.flush()
+            pos += len(data.encode('utf-8'))
+
+t = threading.Thread(target=tailF)
+t.daemon = True
+t.start()
 try:
-    script.invoke(tuple(sys.argv), (), ())
+    script.invoke(args, (), ())
 finally:
+    t.join(3)
     try:
         document.dispose()
     except Exception: # __main__.DisposeException
@@ -891,4 +1023,4 @@ finally:
         None
     process.terminate()
 
-# magic comment terminator */
+# Javascript comment terminator */
