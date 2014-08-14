@@ -176,8 +176,8 @@ function WindowsFilesystem() {
         return filePaths;
     };
 
-    this.createFolder = function () {
-        fso.FolderExists(outputFolder) || fso.CreateFolder(outputFolder);
+    this.createFolder = function (path) {
+        fso.FolderExists(path) || fso.CreateFolder(path);
     };
 
     this.getBaseName = function (path) {
@@ -804,7 +804,6 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
 }
 
 function Main() {
-    console.log("Main!");
     try {
         var inputFolder = filesystem.getInputFolder();
         var outputFolder = filesystem.getOutputFolder();
