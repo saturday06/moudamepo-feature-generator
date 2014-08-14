@@ -810,7 +810,6 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
 }
 
 function Main() {
-    console.log("Main!");
     try {
         var inputFolder = filesystem.getInputFolder();
         var outputFolder = filesystem.getOutputFolder();
