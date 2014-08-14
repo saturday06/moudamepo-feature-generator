@@ -798,12 +798,12 @@ function Main() {
         var inputFolder = filesystem.getInputFolder();
         var outputFolder = filesystem.getOutputFolder();
         if (WINDOWS) {
-            //try {
-            //    new ActiveXObject("Excel.Application")
-            //} catch (e) {
+            try {
+                new ActiveXObject("Excel.Application")
+            } catch (e) {
                 UseStarOfficeVariantInWindows(inputFolder, outputFolder);
                 return;
-            //}
+            }
         }
         console.log(inputFolder + "Ç©ÇÁééå±édólèëÇåüçıÇµÇƒÇ¢Ç‹Ç∑");
         var message = "\n";
@@ -825,11 +825,9 @@ function Main() {
         } else if (typeof e.javaException != 'undefined') {
             e.javaException.printStackTrace();
         }
-    
         if (typeof e.stack != 'undefined') {
             console.log(e.stack);
         }
-    
         throw e;
     }
 }
