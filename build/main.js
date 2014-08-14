@@ -76,20 +76,22 @@ function WindowsFilesystem() {
         adSaveCreateOverWrite: 2
     };
 
-    this.write = function (path, content) {
+    this.write = function (path, content, bom) {
         var stream = new ActiveXObject("ADODB.Stream");
         try {
             stream.Open();
             stream.Type = StreamTypeEnum.adTypeText;
             stream.Charset = "UTF-8";
             stream.WriteText(content.replace(/\r?\n/g, "\r\n"));
-            stream.Position = 0;
-            stream.Type = StreamTypeEnum.adTypeBinary;
-            stream.Position = 3; // skip BOM
-            binary = stream.Read();
-            stream.Close();
-            stream.Open();
-            stream.Write(binary);
+            if (!bom) {
+                stream.Position = 0;
+                stream.Type = StreamTypeEnum.adTypeBinary;
+                stream.Position = 3; // skip BOM
+                binary = stream.Read();
+                stream.Close();
+                stream.Open();
+                stream.Write(binary);
+            }
             stream.SaveToFile(path, SaveOptionsEnum.adSaveCreateOverWrite);
         } finally {
             stream.Close();
@@ -191,13 +193,15 @@ function WindowsApplication() {
 }
 
 function StarFilesystem() {
-    this.write = function (path, content) {
+    this.write = function (path, content, bom) {
         var printStream;
         try {
             printStream = new PrintStream(new JFile(path), "UTF-8");
-            printStream.write(0xef);
-            printStream.write(0xbb);
-            printStream.write(0xbf);
+            if (bom) {
+                printStream.write(0xef);
+                printStream.write(0xbb);
+                printStream.write(0xbf);
+            }
             printStream.print(content.replace(/\r?\n/g, "\r\n"));
         } finally {
             if (printStream) {
@@ -685,7 +689,7 @@ function CreateFeature(path, outputFolder) {
                 continue;
             }
             var outputPath = outputFolder + FILE_SEPARATOR + filesystem.getBaseName(path) + "_" + sheet.getName() + ".feature";
-            filesystem.write(outputPath, feature);
+            filesystem.write(outputPath, feature, true);
         }
     } finally {
         try {
