@@ -1,10 +1,9 @@
-#!/usr/bin/env python
-# -*- coding: us-ascii-unix -*-
+# Launcher fragment
+# -*- coding: us-ascii-dos -*-
 
 import uno
 import unohelper
 
-import atexit
 import datetime
 import os
 import re
@@ -18,7 +17,6 @@ from time import sleep
 from subprocess import Popen
 from com.sun.star.script.provider import XScriptContext
 from com.sun.star.connection import NoConnectException
-from com.sun.star.util import Date
 from com.sun.star.beans import PropertyValue
 
 if not 'generateFeatureJs' in locals():
