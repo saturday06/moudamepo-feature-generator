@@ -29,6 +29,9 @@ if (STAR) {
     var FILE_SEPARATOR = JFile.separator;
     importClass(Packages.java.lang.System);
     importClass(Packages.java.io.PrintStream);
+    importClass(Packages.java.io.PrintWriter);
+    importClass(Packages.java.io.FileOutputStream);
+    importClass(Packages.java.io.OutputStreamWriter);
     importClass(Packages.com.sun.star.beans.PropertyValue);
     importClass(Packages.com.sun.star.container.XIndexAccess);
     importClass(Packages.com.sun.star.container.XNamed);
@@ -67,28 +70,23 @@ if (STAR) {
 }
 
 function getStarPath(nativePath) {
-    return ("file://" + (WINDOWS ? "/" : "") + nativePath).replace(/\\/, "/");
+    return "file://" + (nativePath + "").replace(/\\/g, "/").replace(/^\/?/, "/");
 }
 
 function getNativePath(starPath) {
-    var regexp = WINDOWS ? /^file:\/\/\// : /^file:\/\//
-    return decodeURI((starPath + "").replace(regexp, ""));
+    return decodeURI((starPath + "").replace(/^file:\/\//, "").replace(/^\/?([a-z]:)/i, "\1"));
 }
-
-// -*- coding: shift_jis-dos -*-
-
-var DECIDION_TABLE_MAX_RIGHT = 200;
-var DECIDION_TABLE_MAX_BOTTOM = 200;
-var DECIDION_TABLE_MAX_IGNORED_LINES = 20;
 
 var POSITIVE_REGEXP = /[○ＹY]/;
 var NEGATIVE_REGEXP = /[×ＮN]/;
+var IGNORE_REGEXP = /[ -‐]/;
 var BRACKET_REGEXP = /[“”「」『』【】]/;
 
 function WindowsFilesystem() {
     var fso = new ActiveXObject("Scripting.FileSystemObject");
     var BIF_NONEWFOLDERBUTTON = 512;
     var StreamTypeEnum = {
+        adTypeBinary: 1,
         adTypeText: 2
     };
     var SaveOptionsEnum = {
@@ -102,6 +100,13 @@ function WindowsFilesystem() {
             stream.Type = StreamTypeEnum.adTypeText;
             stream.Charset = "UTF-8";
             stream.WriteText(content.replace(/\r?\n/g, "\r\n"));
+            stream.Position = 0;
+            stream.Type = StreamTypeEnum.adTypeBinary;
+            stream.Position = 3; // skip BOM
+            binary = stream.Read();
+            stream.Close();
+            stream.Open();
+            stream.Write(binary);
             stream.SaveToFile(path, SaveOptionsEnum.adSaveCreateOverWrite);
         } finally {
             stream.Close();
@@ -222,8 +227,8 @@ function StarFilesystem() {
      * 入力フォルダ取得
      */
     this.getInputFolder = function () {
-        if (ARGUMENTS[1]) {
-            return "" + ARGUMENTS[1];
+        if (ARGUMENTS[2]) {
+            return "" + ARGUMENTS[2];
         }
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
@@ -242,8 +247,8 @@ function StarFilesystem() {
      * 出力フォルダ取得
      */
     this.getOutputFolder = function () {
-        if (ARGUMENTS[2]) {
-            return "" + ARGUMENTS[2];
+        if (ARGUMENTS[3]) {
+            return "" + ARGUMENTS[3];
         }
         var folderPicker = qi(XFolderPicker, 
             serviceManager.createInstanceWithContext("com.sun.star.ui.dialogs.FolderPicker", componentContext));
@@ -291,13 +296,33 @@ function StarFilesystem() {
 }
 
 function StarConsole() {
+    var logPath = ARGUMENTS[1];
     this.write = function (message) {
-        System.out.print("" + message);
-        System.out.flush();
+        // UTF-8文字列をファイルに追記するもっと良い方法
+        var fos;
+        var osw;
+        try {
+            fos = new FileOutputStream(logPath, true);
+            osw = new OutputStreamWriter(fos, "UTF-8");
+            osw.write("" + message);
+        } finally {
+            try {
+                if (osw) {
+                    osw.close();
+                }
+            } catch (e) {
+            }
+            try {
+                if (fos) {
+                    fos.close();
+                }
+            } catch (e) {
+            }
+        }
     };
 
     this.log = function (message) {
-        System.out.println("" + message);
+        this.write(message + "\n");
     };
 }
 
@@ -325,6 +350,9 @@ if (STAR) {
  * LibreOffice Calc
  */
 function StarBook(path) {
+    var DECIDION_TABLE_MAX_RIGHT = 200;
+    var DECIDION_TABLE_MAX_BOTTOM = 200;
+    var DECIDION_TABLE_MAX_IGNORED_LINES = 20;
     var readOnly = new PropertyValue();
     readOnly.Name = "ReadOnly";
     readOnly.Value = true;
@@ -343,6 +371,8 @@ function StarBook(path) {
     var starBook = qi(XSpreadsheetDocument, qi(XComponentLoader, desktop).loadComponentFromURL(url, "_blank", 0, properties));
 
     function Sheet(starSheet) {
+        var sheet = this;
+
         function Cell(starCell) {
             this.getValue = function () {
                 return qi(XText, starCell).getString() + "";
@@ -377,6 +407,49 @@ function StarBook(path) {
                 qi(XViewSplitable, currentController).getSplitColumn() : 0;
         };
 
+        this.getWidth = function() {
+            var right = undefined;
+            var ignoredXLines = 0;
+            for (var x = this.getTableLeft(); x < DECIDION_TABLE_MAX_RIGHT; ++x) {
+                var valueFound = false;
+                for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
+                    if (sheet.getCell(y, x).getValue().length > 0) {
+                        valueFound = true;
+                        break;
+                    }
+                }
+                if (valueFound) {
+                    ignoredXLines = 0;
+                    right = x;
+                } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
+                    break;
+                }
+            }
+            return right;
+        };
+
+        this.getHeight = function() {
+            var right = this.getWidth();
+            var bottom = 0;
+            var ignoredYLines = 0;
+            for (var y = this.getTableTop(); y < DECIDION_TABLE_MAX_RIGHT; ++y) {
+                var valueFound = false;
+                for (var x = this.getTableLeft(); x <= right; ++x) {
+                    if (sheet.getCell(y, x).getValue().length > 0) {
+                        valueFound = true;
+                        break;
+                    }
+                }
+                if (valueFound) {
+                    ignoredYLines = 0;
+                    bottom = y;
+                } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
+                    break;
+                }
+            }
+            return bottom;
+        };
+
         this.getBook = function() {
             return book;
         };
@@ -407,7 +480,12 @@ function ExcelBook(path) {
     var excelApplication;
     var excelBook;
     var book = this;
-    
+    var xlByRows = 1;
+    var xlByColumns = 2;
+    var xlPrevious = 2;
+    var xlFormulas = -4123;
+    var xlPart = 2;
+
     function Sheet(excelSheet) {
         var sheet = this;
 
@@ -447,6 +525,16 @@ function ExcelBook(path) {
 
         this.getBook = function() {
             return book;
+        };
+
+        this.getWidth = function() {
+            return excelSheet.UsedRange.Find(
+                "*", excelSheet.Cells(1, 1), xlFormulas, xlPart, xlByColumns, xlPrevious).Column;
+        };
+
+        this.getHeight = function() {
+            return excelSheet.UsedRange.Find(
+                "*", excelSheet.Cells(1, 1), xlFormulas, xlPart, xlByRows, xlPrevious).Row;
         };
     }
 
@@ -554,46 +642,11 @@ function CreateFeatureFromWorkSheet(sheet, featureName) {
         return;
     }
 
-    // 右限を検索
-    var right = 0;
-    var ignoredXLines = 0;
-    for (var x = left; x < DECIDION_TABLE_MAX_RIGHT; ++x) {
-        var valueFound = false;
-        for (var y = top; y < DECIDION_TABLE_MAX_BOTTOM; ++y) {
-            if (sheet.getCell(y, x).getValue().length > 0) {
-                valueFound = true;
-                break;
-            }
-        }
-        if (valueFound) {
-            ignoredXLines = 0;
-            right = x;
-        } else if (++ignoredXLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-            break;
-        }
-    }
+    var right = sheet.getWidth();
     if (!right) {
         return;
     }
-
-    // 下限を検索
-    var bottom = 0;
-    var ignoredYLines = 0;
-    for (var y = top; y < DECIDION_TABLE_MAX_RIGHT; ++y) {
-        var valueFound = false;
-        for (var x = left; x <= right; ++x) {
-            if (sheet.getCell(y, x).getValue().length > 0) {
-                valueFound = true;
-                break;
-            }
-        }
-        if (valueFound) {
-            ignoredYLines = 0;
-            bottom = y;
-        } else if (++ignoredYLines > DECIDION_TABLE_MAX_IGNORED_LINES) {
-            break;
-        }
-    }
+    var bottom = sheet.getHeight();
     if (!bottom) {
         return;
     }
@@ -628,11 +681,7 @@ function CreateFeature(path, outputFolder) {
     var book;
     try {
         if (WINDOWS) {
-            try {
-                book = new ExcelBook(path);
-            } catch (e) {
-                book = new StarBook(path);
-            }
+            book = new ExcelBook(path);
         } else {
             book = new StarBook(path);
         }
@@ -683,7 +732,7 @@ function GetExcelColumnName(Index) {
 /**
  * http://stackoverflow.com/a/20260831
  */
-function objToString(obj, level)
+function ObjToString(obj, level)
 {
     if (level > 10) {
         return "!!! level too deep"
@@ -695,7 +744,7 @@ function objToString(obj, level)
         }
         if (obj[i] instanceof Object) {
             out += i + " (Object):\n";
-            out += objToString(obj[i], level + 1);
+            out += ObjToString(obj[i], level + 1);
         } else {
             out += i + ": " + obj[i] + "\n";
         }
@@ -703,34 +752,279 @@ function objToString(obj, level)
     return out;
 }
 
-try {
-    var inputFolder = filesystem.getInputFolder();
-    var outputFolder = filesystem.getOutputFolder();
-
-    console.log(inputFolder + "から試験仕様書を検索しています");
-    var message = "\n";
-    var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
-    for (var i = 0; i < filePaths.length; ++i) {
-        message += filePaths[i] + "\n";
+function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
+    var keys = [
+        "HKEY_CLASSES_ROOT\\Software\\LibreOffice\\LibreOffice\\Path",
+        "HKEY_CLASSES_ROOT\\Software\\OpenOffice\\OpenOffice\\Path"
+    ];
+    var installDir;
+    var shell = new ActiveXObject("WScript.Shell");
+    for (var i = 0; i < keys.length; i++) {
+        try {
+            installDir = shell.RegRead(keys[i]);
+            break;
+        } catch (e) {
+        }
     }
-    message += filePaths.length + "件見つかりました"
-    console.log(message);
-
-    for (var i = 0; i < filePaths.length; ++i) {
-        CreateFeature(filePaths[i], outputFolder);
+    console.log("python=" + installDir + "program\\python.exe");
+    var fso = new ActiveXObject("Scripting.FileSystemObject");
+    var TemporaryFolder = 2;
+    var tempAppDir = fso.GetSpecialFolder(TemporaryFolder) + "\\SOfficeFeatureGenerator";
+    var tempProcessDir = tempAppDir + "\\" + fso.GetTempName();
+    if (!fso.FolderExists(tempAppDir)) {
+        fso.CreateFolder(tempAppDir);
     }
-} catch (e) {
-    console.log(e);
-    console.log(objToString(e, 1));
-    if (typeof e.rhinoException != 'undefined') {
-        e.rhinoException.printStackTrace();
-    } else if (typeof e.javaException != 'undefined') {
-        e.javaException.printStackTrace();
-    }
+    var ForReading = 1;
+    var ForWriting = 2;
+    var scriptFile = fso.OpenTextFile(WScript.ScriptFullName, ForReading);
+    var scriptText = scriptFile.ReadAll();
+    scriptFile.Close();
 
-    if (typeof e.stack != 'undefined') {
-        console.log(e.stack);
-    }
+    fso.CreateFolder(tempProcessDir);
+    console.log(tempProcessDir);
+    var separator = "<<<<<" + "SEPARATOR" + ">>>>>";
 
-    throw e;
+    var jsPath = tempProcessDir + "\\GenerateFeature.js";
+    var jsText = scriptText.replace(new RegExp(separator + "[\\s\\S]*", "m"), "")
+    jsText = jsText.replace(new RegExp("^[\\s\\S]*?/\\*", "m"), "/*");
+    filesystem.write(jsPath, jsText);
+
+    var pyPath = tempProcessDir + "\\RunSOfficeScript.py";
+    var pyText = scriptText.replace(new RegExp("[\\s\\S]*" + separator + "[\\s\\S]*?/\\*", "m"), "");
+    filesystem.write(pyPath, pyText);
+
+    var commandText = "\"" + installDir + "program\\python.exe\" \"" + pyPath + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"";
+    var commandPath = tempProcessDir + "\\RunPython.bat";
+    var commandFile = fso.CreateTextFile(commandPath, true);
+    commandFile.WriteLine(commandText);
+    commandFile.Close();
+
+    var env = shell.Environment;
+    // stdoutとstderrをマージするためにバッチファイルを作っているが、unicode必須パス上では動かない
+    var command = "\"" + env("COMSPEC") + "\" /c \"" + commandPath + "\" 2>&1";
+    console.log(command);
+    var process = shell.Exec(command);
+    while (!process.StdOut.AtEndOfStream) {
+        console.write(process.StdOut.Read(1));
+    }
 }
+
+function Main() {
+    console.log("Main!");
+    try {
+        var inputFolder = filesystem.getInputFolder();
+        var outputFolder = filesystem.getOutputFolder();
+        if (WINDOWS) {
+            try {
+                new ActiveXObject("Excel.Application")
+            } catch (e) {
+                UseStarOfficeVariantInWindows(inputFolder, outputFolder);
+                return;
+            }
+        }
+        console.log(inputFolder + "から試験仕様書を検索しています");
+        var message = "\n";
+        var filePaths = filesystem.getSpreadsheetFiles(inputFolder);
+        for (var i = 0; i < filePaths.length; ++i) {
+            message += filePaths[i] + "\n";
+        }
+        message += filePaths.length + "件見つかりました"
+        console.log(message);
+
+        for (var i = 0; i < filePaths.length; ++i) {
+            CreateFeature(filePaths[i], outputFolder);
+        }
+    } catch (e) {
+        console.log(e);
+        console.log(ObjToString(e, 1));
+        if (typeof e.rhinoException != 'undefined') {
+            e.rhinoException.printStackTrace();
+        } else if (typeof e.javaException != 'undefined') {
+            e.javaException.printStackTrace();
+        }
+        if (typeof e.stack != 'undefined') {
+            console.log(e.stack);
+        }
+        throw e;
+    }
+}
+
+Main();
+
+// <<<<<SEPARATOR>>>>>
+/*
+#!/usr/bin/env python
+# -*- coding: us-ascii-unix -*-
+
+import uno
+import unohelper
+
+import atexit
+import datetime
+import os
+import re
+import signal
+import sys
+import tempfile
+import threading
+import zipfile
+import codecs
+from time import sleep
+from subprocess import Popen
+from com.sun.star.script.provider import XScriptContext
+from com.sun.star.connection import NoConnectException
+from com.sun.star.util import Date
+from com.sun.star.beans import PropertyValue
+
+if not 'generateFeatureJs' in locals():
+    generateFeatureJs = None
+    with codecs.open(os.path.abspath(os.path.dirname(__file__)) + "/GenerateFeature.js", encoding='utf-8') as f:
+        generateFeatureJs = f.read()
+
+pipeName = "generatefeaturepipe"
+acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
+url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
+officePath = "soffice"
+process = Popen([officePath, acceptArg
+                 , "-nologo"
+                 , "-norestore"
+                 , "-invisible"
+                 #, "-minimized"
+                 #, "-headless"
+])
+
+ctx = None
+for i in range(20):
+    print("Connectiong...")
+    sys.stdout.flush()
+    try:
+        localctx = uno.getComponentContext()
+        resolver = localctx.getServiceManager().createInstanceWithContext(
+            "com.sun.star.bridge.UnoUrlResolver", localctx)
+        ctx = resolver.resolve(url)
+    except NoConnectException:
+        sleep(i * 2 + 1)
+    if ctx:
+        break
+    if process.poll():
+        raise Exception("Process exited")
+if not ctx:
+    raise Exception("Connection failure")
+
+desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+
+tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
+emptyOdPath = tempDir + "/empty.ods"
+emptyOdExtractPath = tempDir + "/empty.ods.extract"
+emptyOdUrl = "file://" + re.sub(r'^/?', "/", emptyOdPath)
+hiddenArg = PropertyValue()
+hiddenArg.Name = "Hidden"
+hiddenArg.Value = True
+emptyDocument = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
+emptyDocument.storeToURL(emptyOdUrl, ())
+emptyDocument.dispose()
+
+scriptOdPath = tempDir + "/script.ods"
+scriptOdUrl = "file://" + re.sub(r'^/?', "/", scriptOdPath)
+
+with zipfile.ZipFile(emptyOdPath, "r") as zin:
+    zin.extractall(emptyOdExtractPath)
+
+manifest = None
+with open(emptyOdExtractPath + "/META-INF/manifest.xml", "r") as f:
+    manifest = f.read()
+
+with open(emptyOdExtractPath + "/META-INF/manifest.xml", "w") as f:
+    f.write(manifest.replace("</manifest:manifest>", r"""
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/GenerateFeature.js" manifest:media-type=""/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/parcel-descriptor.xml" manifest:media-type=""/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/" manifest:media-type="application/binary"/>
+  <manifest:file-entry manifest:full-path="Scripts/javascript/" manifest:media-type="application/binary"/>
+  <manifest:file-entry manifest:full-path="Scripts/" manifest:media-type="application/binary"/>
+</manifest:manifest>
+""".strip()))
+
+scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
+if not os.path.exists(scriptDir):
+    os.makedirs(scriptDir)
+
+with open(scriptDir + "/GenerateFeature.js", "w") as f:
+    f.write(generateFeatureJs)
+
+with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
+    f.write(r"""
+<?xml version="1.0" encoding="UTF-8"?>
+<parcel language="JavaScript" xmlns:parcel="scripting.dtd">
+  <script language="JavaScript">
+    <locale lang="en">
+      <displayname value="GenerateFeature.js"/>
+      <description>GenerateFeature.js</description>
+    </locale>
+    <logicalname value="GenerateFeature.js"/>
+    <functionname value="GenerateFeature.js"/>
+  </script>
+</parcel>
+""".strip())
+
+with zipfile.ZipFile(scriptOdPath, "w") as zout:
+    for dir, subdirs, files in os.walk(emptyOdExtractPath):
+        arcdir = os.path.relpath(dir, emptyOdExtractPath)
+        if not arcdir == ".":
+            zout.write(dir, arcdir)
+        for file in files:
+            arcfile = os.path.join(os.path.relpath(dir, emptyOdExtractPath), file)
+            zout.write(os.path.join(dir, file), arcfile)
+
+macroExecutionModeArg = PropertyValue()
+macroExecutionModeArg.Name = "MacroExecutionMode"
+macroExecutionModeArg.Value = 4
+
+readOnlyArg = PropertyValue()
+readOnlyArg.Name = "ReadOnly"
+readOnlyArg.Value = True
+
+document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
+macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
+
+scriptProvider = document.getScriptProvider();
+script = scriptProvider.getScript(macroUrl)
+logPath = tempDir + "/script.log"
+print("log=" + logPath);
+args = (sys.argv[0], logPath) + tuple(sys.argv[1:])
+print("args=%s" % (args,));
+sys.stdout.flush()
+
+def tailF():
+    print("tailf=" + logPath);
+    pos = 0
+    while True:
+        sleep(0.5)
+        if not os.path.exists(logPath):
+            continue
+        with codecs.open(logPath, encoding='utf-8') as f:
+            if f.seek(0, 2) == pos:
+                continue
+            f.seek(pos)
+            data = f.read()
+            sys.stdout.write(data)
+            sys.stdout.flush()
+            pos += len(data.encode('utf-8'))
+
+t = threading.Thread(target=tailF)
+t.daemon = True
+t.start()
+try:
+    script.invoke(args, (), ())
+finally:
+    t.join(3)
+    try:
+        document.dispose()
+    except Exception: # __main__.DisposeException
+        None
+    try:
+        desktop.terminate()
+    except Exception: # __main__.DisposeException
+        None
+    process.terminate()
+
+# Javascript comment terminator */
