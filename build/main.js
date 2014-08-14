@@ -813,7 +813,7 @@ function Main() {
         }
         message += filePaths.length + "ŒŒ©‚Â‚©‚è‚Ü‚µ‚½"
         console.log(message);
-    
+
         for (var i = 0; i < filePaths.length; ++i) {
             CreateFeature(filePaths[i], outputFolder);
         }
