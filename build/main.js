@@ -804,7 +804,7 @@ function Main() {
         var outputFolder = filesystem.getOutputFolder();
         if (WINDOWS) {
             try {
-                new ActiveXObject("Excel.Application")
+                new ActiveXObject("Excel.Application");
             } catch (e) {
                 UseStarOfficeVariantInWindows(inputFolder, outputFolder);
                 return;
