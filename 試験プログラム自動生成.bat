@@ -793,9 +793,11 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
     var pyText = scriptText.replace(new RegExp("[\\s\\S]*" + separator + "[\\s\\S]*?/\\*", "m"), "");
     filesystem.write(pyPath, pyText);
 
-    var commandText = "\"" + installDir + "program\\python.exe\" \"" + pyPath + "\" \"" + inputFolder + "\" \"" + outputFolder + "\"";
+    // OpenOffice4.lは、なぜかパイプでスクリプトを渡さないとimport unoが失敗する
+    var commandText = "type \"" + pyPath + "\" | \"" + installDir + "program\\python.exe\" - \"" + inputFolder + "\" \"" + outputFolder + "\" \"" + jsPath + "\"";
     var commandPath = tempProcessDir + "\\RunPython.bat";
     var commandFile = fso.CreateTextFile(commandPath, true);
+    commandFile.WriteLine("cd /d \"" + installDir + "program\"");
     commandFile.WriteLine(commandText);
     commandFile.Close();
 
@@ -877,7 +879,7 @@ from com.sun.star.beans import PropertyValue
 
 if not 'generateFeatureJs' in locals():
     generateFeatureJs = None
-    with codecs.open(os.path.abspath(os.path.dirname(__file__)) + "/GenerateFeature.js", encoding='utf-8') as f:
+    with codecs.open(sys.argv[3], encoding='utf-8') as f:
         generateFeatureJs = f.read()
 
 pipeName = "generatefeaturepipe"
@@ -947,7 +949,7 @@ scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
 if not os.path.exists(scriptDir):
     os.makedirs(scriptDir)
 
-with open(scriptDir + "/GenerateFeature.js", "w") as f:
+with codecs.open(scriptDir + "/GenerateFeature.js", "w", encoding='utf-8') as f:
     f.write(generateFeatureJs)
 
 with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
