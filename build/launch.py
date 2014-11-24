@@ -59,7 +59,7 @@ if not context:
 
 desktop = CreateUnoService(context, "com.sun.star.frame.Desktop")
 
-tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
+tempDir = os.path.abspath(tempfile.mkdtemp('', 'SOfficeFeatureGenerator-')).replace("\\", "/")
 odPath = tempDir + "/script.ods"
 print("Working document: " + odPath)
 odUrl = "file://" + re.sub(r'^/?', "/", odPath)
@@ -83,13 +83,21 @@ scriptOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
 scriptOut.setOutputStream(scriptPipe)
 if os.name == 'nt':
     scriptEncoding = sys.stdin.encoding
-    if re.match(r'^(cp|ms)932$', scriptEncoding, re.IGNORECASE):
-        scriptEncoding = 'Shift_JIS'
 else:
     scriptEncoding = "UTF-8"
-print("Script encoding: " + scriptEncoding)
-scriptOut.setEncoding(scriptEncoding)
-scriptOut.writeString(generateFeatureJs)
+
+if sys.version < '3':
+    if re.match(r'^(cp|ms)932$', scriptEncoding, re.IGNORECASE):
+        scriptEncoding = 'Shift_JIS'
+    print("Script encoding: " + scriptEncoding)
+    scriptOut.setEncoding(scriptEncoding)
+    scriptOut.writeString(generateFeatureJs)
+else:
+    print("Script encoding: " + scriptEncoding)
+    scriptBytes = bytes(generateFeatureJs, scriptEncoding)
+    scriptByteSequence = uno.ByteSequence(scriptBytes)
+    scriptOut.writeBytes(scriptByteSequence)
+
 scriptOut.flush()
 scriptOut.closeOutput()
 fileAccess.writeFile(libraryDir + "/GenerateFeature.js", scriptPipe)
