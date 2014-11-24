@@ -70,18 +70,41 @@ tddcf = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Tr
 fileAccess = ctx.getServiceManager().createInstanceWithContext("com.sun.star.ucb.SimpleFileAccess", ctx)
 content = tddcf.createDocumentContent(document)
 scriptsDir = content.getIdentifier().getContentIdentifier() + "/Scripts"
-libraryDir = scriptsDir + "/Library"
-jsDir = libraryDir + "/javascript"
+jsDir = scriptsDir + "/javascript"
+libraryDir = jsDir + "/Library"
 fileAccess.createFolder(scriptsDir)
-fileAccess.createFolder(libraryDir)
 fileAccess.createFolder(jsDir)
+fileAccess.createFolder(libraryDir)
+
 scriptPipe = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.Pipe", ctx)
 scriptOut = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.TextOutputStream", ctx)
 scriptOut.setOutputStream(scriptPipe)
 scriptOut.writeString(generateFeatureJs)
+scriptOut.flush()
 scriptOut.closeOutput()
-fileAccess.writeFile(jsDir + "/GenerateFeature.js", scriptPipe)
+fileAccess.writeFile(libraryDir + "/GenerateFeature.js", scriptPipe)
 scriptPipe.closeInput()
+
+descriptorPipe = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.Pipe", ctx)
+descriptorOut = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.TextOutputStream", ctx)
+descriptorOut.setOutputStream(descriptorPipe)
+descriptorOut.writeString(r"""
+<?xml version="1.0" encoding="UTF-8"?>
+<parcel language="JavaScript" xmlns:parcel="scripting.dtd">
+  <script language="JavaScript">
+    <locale lang="en">
+      <displayname value="GenerateFeature.js"/>
+      <description>GenerateFeature.js</description>
+    </locale>
+    <logicalname value="GenerateFeature.js"/>
+    <functionname value="GenerateFeature.js"/>
+  </script>
+</parcel>
+""".strip())
+descriptorOut.flush()
+descriptorOut.closeOutput()
+fileAccess.writeFile(libraryDir + "/parcel-descriptor.xml", descriptorPipe)
+descriptorPipe.closeInput()
 
 document.storeToURL(odUrl, ())
 document.dispose()
