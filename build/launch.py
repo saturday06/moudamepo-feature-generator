@@ -25,6 +25,9 @@ if not 'generateFeatureJs' in locals():
     with codecs.open(sys.argv[3], encoding='utf-8') as f:
         generateFeatureJs = f.read()
 
+def CreateUnoService(context, name):
+    return context.getServiceManager().createInstanceWithContext(name, context)
+
 pipeName = "generatefeaturepipe"
 acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
@@ -37,37 +40,36 @@ process = Popen([officePath, acceptArg
                  #, "-headless"
 ])
 
-ctx = None
+context = None
 for i in range(20):
     print("Connectiong...")
     sys.stdout.flush()
     try:
-        localctx = uno.getComponentContext()
-        resolver = localctx.getServiceManager().createInstanceWithContext(
-            "com.sun.star.bridge.UnoUrlResolver", localctx)
-        ctx = resolver.resolve(url)
+        localContext = uno.getComponentContext()
+        resolver = CreateUnoService(localContext, "com.sun.star.bridge.UnoUrlResolver")
+        context = resolver.resolve(url)
     except NoConnectException:
         sleep(i * 2 + 1)
-    if ctx:
+    if context:
         break
     if process.poll():
         raise Exception("Process exited")
-if not ctx:
+if not context:
     raise Exception("Connection failure")
 
-desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+desktop = CreateUnoService(context, "com.sun.star.frame.Desktop")
 
 tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
 odPath = tempDir + "/script.ods"
-print(odPath)
+print("Working document: " + odPath)
 odUrl = "file://" + re.sub(r'^/?', "/", odPath)
 hiddenArg = PropertyValue()
 hiddenArg.Name = "Hidden"
 hiddenArg.Value = True
 
 document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
-tddcf = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.TransientDocumentsDocumentContentFactory", ctx)
-fileAccess = ctx.getServiceManager().createInstanceWithContext("com.sun.star.ucb.SimpleFileAccess", ctx)
+tddcf = CreateUnoService(context, "com.sun.star.frame.TransientDocumentsDocumentContentFactory")
+fileAccess = CreateUnoService(context, "com.sun.star.ucb.SimpleFileAccess")
 content = tddcf.createDocumentContent(document)
 scriptsDir = content.getIdentifier().getContentIdentifier() + "/Scripts"
 jsDir = scriptsDir + "/javascript"
@@ -76,18 +78,23 @@ fileAccess.createFolder(scriptsDir)
 fileAccess.createFolder(jsDir)
 fileAccess.createFolder(libraryDir)
 
-scriptPipe = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.Pipe", ctx)
-scriptOut = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.TextOutputStream", ctx)
+scriptPipe = CreateUnoService(context, "com.sun.star.io.Pipe")
+scriptOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
 scriptOut.setOutputStream(scriptPipe)
+if os.name == 'nt':
+    scriptOut.setEncoding(sys.stdin.encoding)
+else:
+    scriptOut.setEncoding("UTF-8")
 scriptOut.writeString(generateFeatureJs)
 scriptOut.flush()
 scriptOut.closeOutput()
 fileAccess.writeFile(libraryDir + "/GenerateFeature.js", scriptPipe)
 scriptPipe.closeInput()
 
-descriptorPipe = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.Pipe", ctx)
-descriptorOut = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.TextOutputStream", ctx)
+descriptorPipe = CreateUnoService(context, "com.sun.star.io.Pipe")
+descriptorOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
 descriptorOut.setOutputStream(descriptorPipe)
+descriptorOut.setEncoding("UTF-8")
 descriptorOut.writeString(r"""
 <?xml version="1.0" encoding="UTF-8"?>
 <parcel language="JavaScript" xmlns:parcel="scripting.dtd">
