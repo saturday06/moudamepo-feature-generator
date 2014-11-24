@@ -77,6 +77,9 @@ function getNativePath(starPath) {
     return decodeURI((starPath + "").replace(/^file:\/\//, "").replace(/^\/?([a-z]:)/i, "\1"));
 }
 
+function ExitException() {
+}
+
 var POSITIVE_REGEXP = /[ÅõÇxY]/;
 var NEGATIVE_REGEXP = /[Å~ÇmN]/;
 var IGNORE_REGEXP = /[ -Å]]/;
@@ -205,7 +208,7 @@ function WindowsConsole() {
 
 function WindowsApplication() {
     this.exit = function () {
-        WScript.Quit();
+        throw new ExitException();
     };
 }
 
@@ -332,7 +335,7 @@ function StarConsole() {
 
 function StarApplication() {
     this.exit = function () {
-        throw new Error("Exit!");
+        throw new ExitException();
     };
 }
 
@@ -814,12 +817,12 @@ function Main() {
         var inputFolder = filesystem.getInputFolder();
         var outputFolder = filesystem.getOutputFolder();
         if (WINDOWS) {
-//            try {
-//                new ActiveXObject("Excel.Application");
-//            } catch (e) {
+            try {
+                new ActiveXObject("Excel.Application");
+            } catch (e) {
                 UseStarOfficeVariantInWindows(inputFolder, outputFolder);
                 return;
-//            }
+            }
         }
         console.log(inputFolder + "Ç©ÇÁééå±édólèëÇåüçıÇµÇƒÇ¢Ç‹Ç∑");
         var message = "\n";
@@ -834,6 +837,9 @@ function Main() {
             CreateFeature(filePaths[i], outputFolder);
         }
     } catch (e) {
+        if (e instanceof ExitException) {
+            return;
+        }
         console.log(e);
         console.log(ObjToString(e, 1));
         if (typeof e.rhinoException != 'undefined') {
@@ -862,6 +868,7 @@ import datetime
 import os
 import re
 import signal
+import shutil
 import sys
 import tempfile
 import threading
@@ -1002,14 +1009,18 @@ def tailF():
         sleep(0.5)
         if not os.path.exists(logPath):
             continue
-        with codecs.open(logPath, encoding='utf-8') as f:
+        encoding = 'utf-8'
+        with codecs.open(logPath, encoding=encoding) as f:
             if f.seek(0, 2) == pos:
                 continue
             f.seek(pos)
-            data = f.read()
-            sys.stdout.write(data)
+            data = f.read().encode(encoding)
+            if sys.version < '3':
+                sys.stdout.write(data)
+            else:
+                sys.stdout.write(data.decode(encoding))
             sys.stdout.flush()
-            pos += len(data.encode('utf-8'))
+            pos += len(data)
 
 t = threading.Thread(target=tailF)
 t.daemon = True
@@ -1027,5 +1038,8 @@ finally:
     except Exception: # __main__.DisposeException
         None
     process.terminate()
+
+# if no error
+shutil.rmtree(tempDir)
 
 # Javascript comment terminator */
