@@ -767,6 +767,10 @@ function UseStarOfficeVariantInWindows(inputFolder, outputFolder) {
         } catch (e) {
         }
     }
+    if (!installDir) {
+        console.log("OpenOffice/LibreOfficeが見つかりませんでした。終了します。");
+        return;
+    }
     console.log("python=" + installDir + "program\\python.exe");
     var fso = new ActiveXObject("Scripting.FileSystemObject");
     var TemporaryFolder = 2;
@@ -820,6 +824,7 @@ function Main() {
             try {
                 new ActiveXObject("Excel.Application");
             } catch (e) {
+                console.log("Excelが見つかりませんでした。");
                 UseStarOfficeVariantInWindows(inputFolder, outputFolder);
                 return;
             }
