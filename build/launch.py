@@ -85,19 +85,12 @@ if os.name == 'nt':
     scriptEncoding = sys.stdin.encoding
 else:
     scriptEncoding = "UTF-8"
-
 if sys.version < '3':
-    if re.match(r'^(cp|ms)932$', scriptEncoding, re.IGNORECASE):
-        scriptEncoding = 'Shift_JIS'
-    print("Script encoding: " + scriptEncoding)
-    scriptOut.setEncoding(scriptEncoding)
-    scriptOut.writeString(generateFeatureJs)
+    scriptBytes = generateFeatureJs.decode('UTF-8').encode(scriptEncoding)
 else:
-    print("Script encoding: " + scriptEncoding)
     scriptBytes = bytes(generateFeatureJs, scriptEncoding)
-    scriptByteSequence = uno.ByteSequence(scriptBytes)
-    scriptOut.writeBytes(scriptByteSequence)
-
+scriptByteSequence = uno.ByteSequence(scriptBytes)
+scriptOut.writeBytes(scriptByteSequence)
 scriptOut.flush()
 scriptOut.closeOutput()
 fileAccess.writeFile(libraryDir + "/GenerateFeature.js", scriptPipe)
