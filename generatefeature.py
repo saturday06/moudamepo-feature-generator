@@ -8,8 +8,6 @@
 #   ./generatefeature.py inputdirectory outputdirectory
 #
 
-import sys
-
 generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
 // -*- coding: shift_jis-dos -*-
 /**
@@ -861,11 +859,6 @@ Main();
 
 """
 #" /* magic comment for editor's syntax highlighting
-
-# http://python3porting.com/noconv.html
-if sys.version < '3':
-    import codecs
-    generateFeatureJs = codecs.raw_unicode_escape_decode(generateFeatureJs)[0]
 # Launcher fragment
 # -*- coding: us-ascii-dos -*-
 
@@ -927,7 +920,7 @@ if not context:
 
 desktop = CreateUnoService(context, "com.sun.star.frame.Desktop")
 
-tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
+tempDir = os.path.abspath(tempfile.mkdtemp('', 'SOfficeFeatureGenerator-')).replace("\\", "/")
 odPath = tempDir + "/script.ods"
 print("Working document: " + odPath)
 odUrl = "file://" + re.sub(r'^/?', "/", odPath)
@@ -951,13 +944,14 @@ scriptOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
 scriptOut.setOutputStream(scriptPipe)
 if os.name == 'nt':
     scriptEncoding = sys.stdin.encoding
-    if re.match(r'^(cp|ms)932$', scriptEncoding, re.IGNORECASE):
-        scriptEncoding = 'Shift_JIS'
 else:
     scriptEncoding = "UTF-8"
-print("Script encoding: " + scriptEncoding)
-scriptOut.setEncoding(scriptEncoding)
-scriptOut.writeString(generateFeatureJs)
+if sys.version < '3':
+    scriptBytes = generateFeatureJs.decode('UTF-8').encode(scriptEncoding)
+else:
+    scriptBytes = bytes(generateFeatureJs, scriptEncoding)
+scriptByteSequence = uno.ByteSequence(scriptBytes)
+scriptOut.writeBytes(scriptByteSequence)
 scriptOut.flush()
 scriptOut.closeOutput()
 fileAccess.writeFile(libraryDir + "/GenerateFeature.js", scriptPipe)
