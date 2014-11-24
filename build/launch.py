@@ -82,9 +82,11 @@ scriptPipe = CreateUnoService(context, "com.sun.star.io.Pipe")
 scriptOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
 scriptOut.setOutputStream(scriptPipe)
 if os.name == 'nt':
-    scriptOut.setEncoding(sys.stdin.encoding)
+    scriptEncoding = sys.stdin.encoding
 else:
-    scriptOut.setEncoding("UTF-8")
+    scriptEncoding = "UTF-8"
+print("Script encoding: " + scriptEncoding)
+scriptOut.setEncoding(scriptEncoding)
 scriptOut.writeString(generateFeatureJs)
 scriptOut.flush()
 scriptOut.closeOutput()
