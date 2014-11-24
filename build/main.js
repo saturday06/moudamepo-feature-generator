@@ -60,6 +60,9 @@ function getNativePath(starPath) {
     return decodeURI((starPath + "").replace(/^file:\/\//, "").replace(/^\/?([a-z]:)/i, "\1"));
 }
 
+function ExitException() {
+}
+
 var POSITIVE_REGEXP = /[ÅõÇxY]/;
 var NEGATIVE_REGEXP = /[Å~ÇmN]/;
 var IGNORE_REGEXP = /[ -Å]]/;
@@ -188,7 +191,7 @@ function WindowsConsole() {
 
 function WindowsApplication() {
     this.exit = function () {
-        WScript.Quit();
+        throw new ExitException();
     };
 }
 
@@ -315,7 +318,7 @@ function StarConsole() {
 
 function StarApplication() {
     this.exit = function () {
-        throw new Error("Exit!");
+        throw new ExitException();
     };
 }
 
@@ -817,6 +820,9 @@ function Main() {
             CreateFeature(filePaths[i], outputFolder);
         }
     } catch (e) {
+        if (e instanceof ExitException) {
+            return;
+        }
         console.log(e);
         console.log(ObjToString(e, 1));
         if (typeof e.rhinoException != 'undefined') {

@@ -18,4 +18,4 @@ generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
 # http://python3porting.com/noconv.html
 if sys.version < '3':
     import codecs
-    generateFeatureJs = codecs.unicode_escape_decode(generateFeatureJs)[0]
+    generateFeatureJs = codecs.raw_unicode_escape_decode(generateFeatureJs)[0]

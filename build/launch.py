@@ -153,7 +153,7 @@ def tailF():
                 continue
             f.seek(pos)
             data = f.read()
-            sys.stdout.write(data)
+            sys.stdout.write(data.encode('utf-8'))
             sys.stdout.flush()
             pos += len(data.encode('utf-8'))
 
