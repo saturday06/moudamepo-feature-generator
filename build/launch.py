@@ -8,6 +8,7 @@ import datetime
 import os
 import re
 import signal
+import shutil
 import sys
 import tempfile
 import threading
@@ -148,14 +149,18 @@ def tailF():
         sleep(0.5)
         if not os.path.exists(logPath):
             continue
-        with codecs.open(logPath, encoding='utf-8') as f:
+        encoding = 'utf-8'
+        with codecs.open(logPath, encoding=encoding) as f:
             if f.seek(0, 2) == pos:
                 continue
             f.seek(pos)
-            data = f.read()
-            sys.stdout.write(data.encode('utf-8'))
+            data = f.read().encode(encoding)
+            if sys.version < '3':
+                sys.stdout.write(data)
+            else:
+                sys.stdout.write(data.decode(encoding))
             sys.stdout.flush()
-            pos += len(data.encode('utf-8'))
+            pos += len(data)
 
 t = threading.Thread(target=tailF)
 t.daemon = True
@@ -173,5 +178,8 @@ finally:
     except Exception: # __main__.DisposeException
         None
     process.terminate()
+
+# if no error
+shutil.rmtree(tempDir)
 
 # Javascript comment terminator */
