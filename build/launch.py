@@ -83,6 +83,8 @@ scriptOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
 scriptOut.setOutputStream(scriptPipe)
 if os.name == 'nt':
     scriptEncoding = sys.stdin.encoding
+    if re.match(r'^(cp|ms)932$', scriptEncoding, re.IGNORECASE):
+        scriptEncoding = 'Shift_JIS'
 else:
     scriptEncoding = "UTF-8"
 print("Script encoding: " + scriptEncoding)
