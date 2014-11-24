@@ -8,7 +8,9 @@
 #   ./generatefeature.py inputdirectory outputdirectory
 #
 
-generateFeatureJs = ur""" //" // magic comment for editor's syntax highlighing
+import sys
+
+generateFeatureJs = r""" //" // magic comment for editor's syntax highlighing
 // -*- coding: shift_jis-dos -*-
 /**
  * Main
@@ -848,6 +850,11 @@ Main();
 
 """
 #" /* magic comment for editor's syntax highlighting
+
+# http://python3porting.com/noconv.html
+if sys.version < '3':
+    import codecs
+    generateFeatureJs = codecs.unicode_escape_decode(generateFeatureJs)[0]
 # Launcher fragment
 # -*- coding: us-ascii-dos -*-
 
