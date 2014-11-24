@@ -58,70 +58,33 @@ if not ctx:
 desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
 
 tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
-emptyOdPath = tempDir + "/empty.ods"
-emptyOdExtractPath = tempDir + "/empty.ods.extract"
-emptyOdUrl = "file://" + re.sub(r'^/?', "/", emptyOdPath)
+odPath = tempDir + "/script.ods"
+print(odPath)
+odUrl = "file://" + re.sub(r'^/?', "/", odPath)
 hiddenArg = PropertyValue()
 hiddenArg.Name = "Hidden"
 hiddenArg.Value = True
-emptyDocument = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
-emptyDocument.storeToURL(emptyOdUrl, ())
-emptyDocument.dispose()
 
-scriptOdPath = tempDir + "/script.ods"
-scriptOdUrl = "file://" + re.sub(r'^/?', "/", scriptOdPath)
+document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
+tddcf = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.TransientDocumentsDocumentContentFactory", ctx)
+fileAccess = ctx.getServiceManager().createInstanceWithContext("com.sun.star.ucb.SimpleFileAccess", ctx)
+content = tddcf.createDocumentContent(document)
+scriptsDir = content.getIdentifier().getContentIdentifier() + "/Scripts"
+libraryDir = scriptsDir + "/Library"
+jsDir = libraryDir + "/javascript"
+fileAccess.createFolder(scriptsDir)
+fileAccess.createFolder(libraryDir)
+fileAccess.createFolder(jsDir)
+scriptPipe = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.Pipe", ctx)
+scriptOut = ctx.getServiceManager().createInstanceWithContext("com.sun.star.io.TextOutputStream", ctx)
+scriptOut.setOutputStream(scriptPipe)
+scriptOut.writeString(generateFeatureJs)
+scriptOut.closeOutput()
+fileAccess.writeFile(jsDir + "/GenerateFeature.js", scriptPipe)
+scriptPipe.closeInput()
 
-with zipfile.ZipFile(emptyOdPath, "r") as zin:
-    zin.extractall(emptyOdExtractPath)
-
-manifest = None
-with open(emptyOdExtractPath + "/META-INF/manifest.xml", "r") as f:
-    manifest = f.read()
-
-with open(emptyOdExtractPath + "/META-INF/manifest.xml", "w") as f:
-    f.write(manifest.replace("</manifest:manifest>", r"""
-  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/GenerateFeature.js" manifest:media-type=""/>
-  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/parcel-descriptor.xml" manifest:media-type=""/>
-  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/" manifest:media-type="application/binary"/>
-  <manifest:file-entry manifest:full-path="Scripts/javascript/" manifest:media-type="application/binary"/>
-  <manifest:file-entry manifest:full-path="Scripts/" manifest:media-type="application/binary"/>
-</manifest:manifest>
-""".strip()))
-
-scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
-if not os.path.exists(scriptDir):
-    os.makedirs(scriptDir)
-
-if os.name == 'nt':
-    encoding = sys.stdin.encoding
-else:
-    encoding = "utf-8"
-with codecs.open(scriptDir + "/GenerateFeature.js", "w", encoding) as f:
-    f.write(generateFeatureJs)
-
-with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
-    f.write(r"""
-<?xml version="1.0" encoding="UTF-8"?>
-<parcel language="JavaScript" xmlns:parcel="scripting.dtd">
-  <script language="JavaScript">
-    <locale lang="en">
-      <displayname value="GenerateFeature.js"/>
-      <description>GenerateFeature.js</description>
-    </locale>
-    <logicalname value="GenerateFeature.js"/>
-    <functionname value="GenerateFeature.js"/>
-  </script>
-</parcel>
-""".strip())
-
-with zipfile.ZipFile(scriptOdPath, "w") as zout:
-    for dir, subdirs, files in os.walk(emptyOdExtractPath):
-        arcdir = os.path.relpath(dir, emptyOdExtractPath)
-        if not arcdir == ".":
-            zout.write(dir, arcdir)
-        for file in files:
-            arcfile = os.path.join(os.path.relpath(dir, emptyOdExtractPath), file)
-            zout.write(os.path.join(dir, file), arcfile)
+document.storeToURL(odUrl, ())
+document.dispose()
 
 macroExecutionModeArg = PropertyValue()
 macroExecutionModeArg.Name = "MacroExecutionMode"
@@ -131,7 +94,7 @@ readOnlyArg = PropertyValue()
 readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
-document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
+document = desktop.loadComponentFromURL(odUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
 
 scriptProvider = document.getScriptProvider();
