@@ -890,6 +890,9 @@ if not 'generateFeatureJs' in locals():
     with codecs.open(sys.argv[3], encoding='utf-8') as f:
         generateFeatureJs = f.read()
 
+def CreateUnoService(context, name):
+    return context.getServiceManager().createInstanceWithContext(name, context)
+
 pipeName = "generatefeaturepipe"
 acceptArg = "-accept=pipe,name=%s;urp;StarOffice.ServiceManager" % pipeName
 url = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipeName
@@ -902,70 +905,66 @@ process = Popen([officePath, acceptArg
                  #, "-headless"
 ])
 
-ctx = None
+context = None
 for i in range(20):
     print("Connectiong...")
     sys.stdout.flush()
     try:
-        localctx = uno.getComponentContext()
-        resolver = localctx.getServiceManager().createInstanceWithContext(
-            "com.sun.star.bridge.UnoUrlResolver", localctx)
-        ctx = resolver.resolve(url)
+        localContext = uno.getComponentContext()
+        resolver = CreateUnoService(localContext, "com.sun.star.bridge.UnoUrlResolver")
+        context = resolver.resolve(url)
     except NoConnectException:
         sleep(i * 2 + 1)
-    if ctx:
+    if context:
         break
     if process.poll():
         raise Exception("Process exited")
-if not ctx:
+if not context:
     raise Exception("Connection failure")
 
-desktop = ctx.getServiceManager().createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+desktop = CreateUnoService(context, "com.sun.star.frame.Desktop")
 
 tempDir = os.path.abspath(tempfile.mkdtemp()).replace("\\", "/")
-emptyOdPath = tempDir + "/empty.ods"
-emptyOdExtractPath = tempDir + "/empty.ods.extract"
-emptyOdUrl = "file://" + re.sub(r'^/?', "/", emptyOdPath)
+odPath = tempDir + "/script.ods"
+print("Working document: " + odPath)
+odUrl = "file://" + re.sub(r'^/?', "/", odPath)
 hiddenArg = PropertyValue()
 hiddenArg.Name = "Hidden"
 hiddenArg.Value = True
-emptyDocument = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
-emptyDocument.storeToURL(emptyOdUrl, ())
-emptyDocument.dispose()
 
-scriptOdPath = tempDir + "/script.ods"
-scriptOdUrl = "file://" + re.sub(r'^/?', "/", scriptOdPath)
+document = desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, (hiddenArg,));
+tddcf = CreateUnoService(context, "com.sun.star.frame.TransientDocumentsDocumentContentFactory")
+fileAccess = CreateUnoService(context, "com.sun.star.ucb.SimpleFileAccess")
+content = tddcf.createDocumentContent(document)
+scriptsDir = content.getIdentifier().getContentIdentifier() + "/Scripts"
+jsDir = scriptsDir + "/javascript"
+libraryDir = jsDir + "/Library"
+fileAccess.createFolder(scriptsDir)
+fileAccess.createFolder(jsDir)
+fileAccess.createFolder(libraryDir)
 
-with zipfile.ZipFile(emptyOdPath, "r") as zin:
-    zin.extractall(emptyOdExtractPath)
-
-manifest = None
-with open(emptyOdExtractPath + "/META-INF/manifest.xml", "r") as f:
-    manifest = f.read()
-
-with open(emptyOdExtractPath + "/META-INF/manifest.xml", "w") as f:
-    f.write(manifest.replace("</manifest:manifest>", r"""
-  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/GenerateFeature.js" manifest:media-type=""/>
-  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/parcel-descriptor.xml" manifest:media-type=""/>
-  <manifest:file-entry manifest:full-path="Scripts/javascript/Library/" manifest:media-type="application/binary"/>
-  <manifest:file-entry manifest:full-path="Scripts/javascript/" manifest:media-type="application/binary"/>
-  <manifest:file-entry manifest:full-path="Scripts/" manifest:media-type="application/binary"/>
-</manifest:manifest>
-""".strip()))
-
-scriptDir = emptyOdExtractPath + "/Scripts/javascript/Library"
-if not os.path.exists(scriptDir):
-    os.makedirs(scriptDir)
-
+scriptPipe = CreateUnoService(context, "com.sun.star.io.Pipe")
+scriptOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
+scriptOut.setOutputStream(scriptPipe)
 if os.name == 'nt':
-    encoding = sys.stdin.encoding
+    scriptEncoding = sys.stdin.encoding
+    if re.match(r'^(cp|ms)932$', scriptEncoding, re.IGNORECASE):
+        scriptEncoding = 'Shift_JIS'
 else:
-    encoding = "utf-8"
-with codecs.open(scriptDir + "/GenerateFeature.js", "w", encoding) as f:
-    f.write(generateFeatureJs)
+    scriptEncoding = "UTF-8"
+print("Script encoding: " + scriptEncoding)
+scriptOut.setEncoding(scriptEncoding)
+scriptOut.writeString(generateFeatureJs)
+scriptOut.flush()
+scriptOut.closeOutput()
+fileAccess.writeFile(libraryDir + "/GenerateFeature.js", scriptPipe)
+scriptPipe.closeInput()
 
-with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
-    f.write(r"""
+descriptorPipe = CreateUnoService(context, "com.sun.star.io.Pipe")
+descriptorOut = CreateUnoService(context, "com.sun.star.io.TextOutputStream")
+descriptorOut.setOutputStream(descriptorPipe)
+descriptorOut.setEncoding("UTF-8")
+descriptorOut.writeString(r"""
 <?xml version="1.0" encoding="UTF-8"?>
 <parcel language="JavaScript" xmlns:parcel="scripting.dtd">
   <script language="JavaScript">
@@ -978,15 +977,13 @@ with open(scriptDir + "/parcel-descriptor.xml", "w") as f:
   </script>
 </parcel>
 """.strip())
+descriptorOut.flush()
+descriptorOut.closeOutput()
+fileAccess.writeFile(libraryDir + "/parcel-descriptor.xml", descriptorPipe)
+descriptorPipe.closeInput()
 
-with zipfile.ZipFile(scriptOdPath, "w") as zout:
-    for dir, subdirs, files in os.walk(emptyOdExtractPath):
-        arcdir = os.path.relpath(dir, emptyOdExtractPath)
-        if not arcdir == ".":
-            zout.write(dir, arcdir)
-        for file in files:
-            arcfile = os.path.join(os.path.relpath(dir, emptyOdExtractPath), file)
-            zout.write(os.path.join(dir, file), arcfile)
+document.storeToURL(odUrl, ())
+document.dispose()
 
 macroExecutionModeArg = PropertyValue()
 macroExecutionModeArg.Name = "MacroExecutionMode"
@@ -996,7 +993,7 @@ readOnlyArg = PropertyValue()
 readOnlyArg.Name = "ReadOnly"
 readOnlyArg.Value = True
 
-document = desktop.loadComponentFromURL(scriptOdUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
+document = desktop.loadComponentFromURL(odUrl, "_blank", 0, (macroExecutionModeArg, readOnlyArg, hiddenArg));
 macroUrl = "vnd.sun.star.script:Library.GenerateFeature.js?language=JavaScript&location=document"
 
 scriptProvider = document.getScriptProvider();
